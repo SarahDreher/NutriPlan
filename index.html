@@ -1,0 +1,2017 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<link rel="manifest" href="/manifest.json">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NutriPlan">
+<meta name="theme-color" content="#C9AB6E">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<title>NutriPlan</title>
+<style>
+:root {
+  --bg:        #111113;
+  --card:      #1F1F22;
+  --elevated:  #2A2A2E;
+  --gold:      #C9AB6E;
+  --bronze:    #8B7255;
+  --green:     #6A9E72;
+  --red:       #BF4D40;
+  --text:      #F2EDE4;
+  --muted:     #999080;
+  --divider:   #333336;
+  --radius:    14px;
+  --tab-h:     calc(60px + env(safe-area-inset-bottom));
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, sans-serif; overscroll-behavior: none; }
+body { overflow: hidden; }
+
+/* ── Layout ── */
+#app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+#content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: var(--tab-h); }
+.view { display: none; padding: 16px; animation: fadeIn .18s ease; }
+.view.active { display: block; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── Tab Bar ── */
+#tabbar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  height: var(--tab-h);
+  background: #18181B;
+  border-top: 1px solid var(--divider);
+  display: flex;
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 100;
+}
+.tab-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; background: none; border: none; color: var(--muted); font-size: 10px;
+  cursor: pointer; padding: 6px 0; transition: color .15s;
+}
+.tab-btn.active { color: var(--gold); }
+.tab-btn svg { width: 22px; height: 22px; stroke-width: 1.8; }
+
+/* ── Cards ── */
+.card { background: var(--card); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+.card-title { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 14px; }
+.elevated { background: var(--elevated); border-radius: 10px; }
+
+/* ── Buttons ── */
+.btn-gold {
+  width: 100%; padding: 14px; background: var(--gold); color: #111;
+  border: none; border-radius: 14px; font-size: 16px; font-weight: 600;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-gold:disabled { opacity: .45; }
+.btn-ghost { background: none; border: none; color: var(--gold); font-size: 14px; cursor: pointer; }
+.btn-danger { background: none; border: none; color: var(--red); font-size: 14px; cursor: pointer; }
+
+/* ── Form Controls ── */
+input, textarea, select {
+  width: 100%; background: var(--elevated); border: none; border-radius: 10px;
+  color: var(--text); font-size: 15px; padding: 11px 13px; font-family: inherit;
+  outline: none; -webkit-appearance: none;
+}
+textarea { resize: vertical; min-height: 90px; }
+select option { background: var(--elevated); }
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+.field-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; }
+.field-row + .field-row { border-top: 1px solid var(--divider); }
+
+/* ── Slider ── */
+input[type=range] {
+  padding: 0; background: none; height: 28px;
+  -webkit-appearance: none; appearance: none;
+}
+input[type=range]::-webkit-slider-runnable-track {
+  height: 4px; background: var(--divider); border-radius: 2px;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 22px; height: 22px;
+  background: var(--gold); border-radius: 50%; margin-top: -9px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.4);
+}
+
+/* ── Segmented ── */
+.seg { display: flex; background: var(--elevated); border-radius: 10px; padding: 3px; gap: 2px; }
+.seg-btn {
+  flex: 1; padding: 7px; border: none; border-radius: 8px; background: none;
+  color: var(--muted); font-size: 14px; font-weight: 500; cursor: pointer; transition: all .15s;
+}
+.seg-btn.active { background: var(--gold); color: #111; font-weight: 600; }
+
+/* ── Tags ── */
+.tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 20px; font-size: 13px;
+  border: 1px solid; cursor: default;
+}
+.tag.bronze { color: var(--text); border-color: rgba(139,114,85,.4); background: rgba(139,114,85,.12); }
+.tag.red    { color: var(--text); border-color: rgba(191,77,64,.4);  background: rgba(191,77,64,.12); }
+.tag-x { background: none; border: none; color: inherit; font-size: 12px; cursor: pointer; padding: 0; }
+.tag-input-row { display: flex; gap: 8px; }
+.tag-input-row input { flex: 1; }
+.tag-add { background: none; border: none; color: var(--gold); font-size: 22px; cursor: pointer; padding: 0 4px; }
+
+/* ── Progress Bar ── */
+.progress-track { background: var(--divider); border-radius: 4px; height: 6px; overflow: hidden; }
+.progress-fill  { height: 100%; border-radius: 4px; background: var(--gold); transition: width .4s ease; }
+.progress-fill.green { background: var(--green); }
+
+/* ── Day Card ── */
+.day-card { background: var(--card); border-radius: var(--radius); margin-bottom: 12px; overflow: hidden; cursor: pointer; }
+.day-card-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 14px 10px; }
+.day-num { font-size: 16px; font-weight: 700; }
+.day-kcal { font-size: 14px; font-weight: 600; }
+.day-kcal.green { color: var(--green); }
+.day-kcal.gold  { color: var(--gold); }
+.day-kcal.red   { color: var(--red); }
+.cal-bar { margin: 0 14px 10px; }
+.meal-row { display: flex; align-items: center; gap: 10px; padding: 9px 14px; }
+.meal-row + .meal-row { border-top: 1px solid var(--divider); }
+.meal-icon { font-size: 16px; width: 20px; text-align: center; }
+.meal-info { flex: 1; min-width: 0; }
+.meal-type { font-size: 11px; color: var(--muted); }
+.meal-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meal-kcal { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.day-hint { text-align: right; padding: 6px 14px 10px; font-size: 11px; color: var(--muted); }
+
+/* ── Recipe Card ── */
+.recipe-card { display: flex; align-items: center; gap: 12px; padding: 13px; background: var(--card); border-radius: 12px; margin-bottom: 10px; cursor: pointer; }
+.recipe-icon { width: 46px; height: 46px; border-radius: 23px; background: rgba(201,171,110,.14); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+.recipe-name { font-size: 15px; font-weight: 500; }
+.recipe-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* ── Shopping Row ── */
+.shop-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; cursor: pointer; }
+.shop-row + .shop-row { border-top: 1px solid var(--divider); }
+.check-circle {
+  width: 25px; height: 25px; border-radius: 50%; border: 2px solid var(--divider);
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; transition: all .2s;
+}
+.check-circle.done { border-color: var(--green); color: var(--green); }
+.shop-name { flex: 1; font-size: 14px; transition: all .2s; }
+.shop-name.done { color: var(--muted); text-decoration: line-through; }
+.shop-days { font-size: 11px; color: var(--muted); }
+.section-faded { opacity: .6; }
+
+/* ── Stepper ── */
+.stepper { display: flex; align-items: center; gap: 10px; }
+.stepper-btn { background: none; border: none; color: var(--gold); font-size: 22px; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; }
+.stepper-val { font-size: 18px; font-weight: 700; color: var(--gold); min-width: 32px; text-align: center; }
+
+/* ── Modal ── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 200;
+  display: flex; align-items: flex-end; opacity: 0; pointer-events: none; transition: opacity .2s;
+}
+.modal-overlay.open { opacity: 1; pointer-events: all; }
+.modal {
+  background: var(--bg); width: 100%; border-radius: 20px 20px 0 0;
+  max-height: 92vh; display: flex; flex-direction: column;
+  transform: translateY(40px); transition: transform .25s ease;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.modal-overlay.open .modal { transform: translateY(0); }
+.modal-handle { width: 36px; height: 4px; background: var(--divider); border-radius: 2px; margin: 12px auto 0; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px 10px; }
+.modal-title { font-size: 17px; font-weight: 700; }
+.modal-close { background: none; border: none; color: var(--muted); font-size: 15px; cursor: pointer; }
+.modal-body { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 0 16px 20px; flex: 1; }
+
+/* ── Step Row ── */
+.step-row { display: flex; gap: 12px; margin-bottom: 16px; cursor: pointer; }
+.step-num { width: 28px; height: 28px; border-radius: 50%; background: var(--elevated); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: var(--muted); flex-shrink: 0; transition: all .2s; }
+.step-num.active { background: var(--gold); color: #111; }
+.step-text { font-size: 14px; color: var(--muted); line-height: 1.55; transition: color .2s; padding-top: 4px; }
+.step-text.active { color: var(--text); }
+
+/* ── Misc ── */
+.divider { height: 1px; background: var(--divider); margin: 10px 0; }
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 8px; font-size: 12px; }
+.badge.gold { background: rgba(201,171,110,.15); color: var(--gold); }
+.badge.green { background: rgba(106,158,114,.15); color: var(--green); }
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 50px 30px; text-align: center; gap: 12px; }
+.empty-icon { font-size: 52px; opacity: .5; }
+.empty-title { font-size: 18px; font-weight: 600; }
+.empty-text { font-size: 14px; color: var(--muted); line-height: 1.5; }
+.cat-label { font-size: 12px; font-weight: 600; color: var(--muted); margin: 16px 0 8px; display: flex; align-items: center; gap: 6px; }
+.info-box { background: rgba(106,158,114,.08); border-radius: 10px; padding: 11px 13px; display: flex; gap: 8px; align-items: flex-start; }
+.info-box span { font-size: 13px; color: var(--muted); line-height: 1.5; font-style: italic; }
+.spinner { width: 22px; height: 22px; border: 2px solid rgba(201,171,110,.3); border-top-color: var(--gold); border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.model-radio { display: flex; align-items: center; gap: 10px; padding: 11px 0; cursor: pointer; }
+.model-radio + .model-radio { border-top: 1px solid var(--divider); }
+.radio-circle { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--divider); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.radio-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); display: none; }
+.model-radio.selected .radio-circle { border-color: var(--gold); }
+.model-radio.selected .radio-dot { display: block; }
+.model-id { font-size: 11px; color: var(--muted); }
+.token-row { display: flex; gap: 8px; align-items: center; }
+.token-row input { flex: 1; font-family: monospace; font-size: 13px; }
+.eye-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 0 4px; }
+
+/* ── Custom Items (Einkauf) ── */
+.custom-item-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; }
+.custom-item-row + .custom-item-row { border-top: 1px solid var(--divider); }
+.custom-item-name.done { color: var(--muted); text-decoration: line-through; }
+
+/* ── Day Toggle Buttons (Fixes) ── */
+.day-toggle-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.day-toggle-btn {
+  padding: 5px 10px; border-radius: 8px; border: 1px solid var(--divider);
+  background: none; color: var(--muted); font-size: 13px; cursor: pointer; transition: all .15s;
+}
+.day-toggle-btn.active { background: var(--gold); color: #111; border-color: var(--gold); font-weight: 600; }
+
+/* ── Recipe Photo Upload ── */
+.photo-upload-box {
+  width: 100%; height: 110px; border: 2px dashed var(--divider); border-radius: 12px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; cursor: pointer; background: var(--elevated); transition: border-color .15s;
+}
+.photo-upload-box:hover { border-color: var(--gold); }
+.photo-upload-box span { font-size: 13px; color: var(--muted); }
+.photo-preview-wrap { position: relative; margin-bottom: 14px; }
+.photo-preview-img { width: 100%; height: 160px; object-fit: cover; border-radius: 10px; display: block; }
+.photo-remove-btn {
+  position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.65);
+  border: none; border-radius: 50%; color: #fff; font-size: 15px; width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; line-height: 1;
+}
+.recipe-card-photo { width: 100%; height: 140px; object-fit: cover; border-radius: 8px 8px 0 0; display: block; }
+
+/* ── Fixed Meal Card ── */
+.fixed-meal-card {
+  background: var(--card); border-radius: var(--radius); padding: 14px; margin-bottom: 12px;
+  position: relative;
+}
+.fixed-meal-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.fixed-meal-type { font-size: 12px; color: var(--gold); font-weight: 600; }
+.fixed-meal-days { font-size: 11px; color: var(--muted); margin-left: auto; }
+.fixed-meal-desc { font-size: 14px; color: var(--text); line-height: 1.5; margin-bottom: 8px; }
+.fixed-meal-tip { font-size: 12px; color: var(--green); font-style: italic; margin-top: 6px; }
+.fixed-meal-del { position: absolute; top: 12px; right: 12px; background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; line-height: 1; }
+</style>
+</head>
+<body>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+</script>
+<div id="app">
+  <div id="content">
+    <!-- PLAN TAB -->
+    <div class="view active" id="view-plan">
+      <div id="plan-content"></div>
+    </div>
+    <!-- REZEPTE TAB -->
+    <div class="view" id="view-recipes">
+      <div id="recipes-content"></div>
+    </div>
+    <!-- EINKAUF TAB -->
+    <div class="view" id="view-shopping">
+      <div id="shopping-content"></div>
+    </div>
+    <!-- FIXES TAB -->
+    <div class="view" id="view-fixes">
+      <div id="fixes-content"></div>
+    </div>
+    <!-- EINSTELLUNGEN TAB -->
+    <div class="view" id="view-settings">
+      <div id="settings-content"></div>
+    </div>
+  </div>
+
+  <!-- TAB BAR -->
+  <div id="tabbar">
+    <button class="tab-btn active" onclick="switchTab('plan')" id="tab-plan">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Plan
+    </button>
+    <button class="tab-btn" onclick="switchTab('recipes')" id="tab-recipes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      Rezepte
+    </button>
+    <button class="tab-btn" onclick="switchTab('shopping')" id="tab-shopping">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+      Einkauf
+    </button>
+    <button class="tab-btn" onclick="switchTab('fixes')" id="tab-fixes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+      Fixes
+    </button>
+    <button class="tab-btn" onclick="switchTab('settings')" id="tab-settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Einstellungen
+    </button>
+  </div>
+</div>
+
+<!-- MODALS -->
+<div class="modal-overlay" id="modal-day" onclick="closeModal('modal-day')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title" id="modal-day-title">Tag 1</span>
+      <button class="modal-close" onclick="closeModal('modal-day')">Fertig</button>
+    </div>
+    <div class="modal-body" id="modal-day-body"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-cook" onclick="closeModal('modal-cook')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title">Kochen</span>
+      <button class="modal-close" onclick="closeModal('modal-cook')">Fertig</button>
+    </div>
+    <div class="modal-body" id="modal-cook-body"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-recipe-detail" onclick="closeModal('modal-recipe-detail')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title">Rezept</span>
+      <button class="modal-close" onclick="closeModal('modal-recipe-detail')">Fertig</button>
+    </div>
+    <div class="modal-body" id="modal-recipe-body"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-add-recipe" onclick="closeModal('modal-add-recipe')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title">Rezept hinzufügen</span>
+      <button class="modal-close" onclick="closeModal('modal-add-recipe')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label>Rezeptname *</label><input id="r-name" placeholder="z.B. Haferbrei mit Beeren"></div>
+      <div class="field"><label>Kategorie</label>
+        <select id="r-cat">
+          <option value="breakfast">Frühstück</option>
+          <option value="lunch">Mittagessen</option>
+          <option value="dinner">Abendessen</option>
+          <option value="snack">Snack</option>
+          <option value="any">Flexibel</option>
+        </select>
+      </div>
+      <div class="field-row"><span>Kalorien (gesamt)</span>
+        <div class="stepper"><button class="stepper-btn" onclick="stepRecipe('calories',-50)">−</button><span class="stepper-val" id="r-cal-val">400</span><button class="stepper-btn" onclick="stepRecipe('calories',50)">+</button></div>
+      </div>
+      <div class="field-row"><span>Portionen</span>
+        <div class="stepper"><button class="stepper-btn" onclick="stepRecipe('servings',-1)">−</button><span class="stepper-val" id="r-srv-val">1</span><button class="stepper-btn" onclick="stepRecipe('servings',1)">+</button></div>
+      </div>
+      <div class="field-row"><span>Zubereitungszeit (Min.)</span>
+        <div class="stepper"><button class="stepper-btn" onclick="stepRecipe('prep',-5)">−</button><span class="stepper-val" id="r-prep-val">30</span><button class="stepper-btn" onclick="stepRecipe('prep',5)">+</button></div>
+      </div>
+      <div class="field" style="margin-top:14px"><label>Zutaten (eine pro Zeile) *</label><textarea id="r-ingredients" placeholder="80g Haferflocken&#10;250ml Hafermilch&#10;100g Heidelbeeren"></textarea></div>
+      <div class="field"><label>Zubereitung</label><textarea id="r-instructions" placeholder="Schritt 1: ...&#10;Schritt 2: ..."></textarea></div>
+      <div class="field"><label>Notizen (optional)</label><input id="r-notes" placeholder="Tipps, Variationen..."></div>
+      <input type="file" id="recipe-photo-input" accept="image/*" capture="environment" style="display:none">
+      <div class="field" id="recipe-photo-field">
+        <label>Foto (optional)</label>
+        <div id="recipe-photo-preview"></div>
+      </div>
+      <button class="btn-gold" onclick="saveRecipe()" style="margin-top:8px">Rezept speichern</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-shopping-filter" onclick="closeModal('modal-shopping-filter')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title">Einkaufszettel</span>
+      <button class="modal-close" onclick="closeModal('modal-shopping-filter')">✕</button>
+    </div>
+    <div class="modal-body" id="modal-shopping-filter-body"></div>
+  </div>
+</div>
+
+<!-- FIXES: Neuer Eintrag Modal -->
+<div class="modal-overlay" id="modal-add-fixed" onclick="closeModal('modal-add-fixed')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title">Feste Mahlzeit hinzufügen</span>
+      <button class="modal-close" onclick="closeModal('modal-add-fixed')">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Auswahl-Karten: Bibliothek oder Freies Rezept -->
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <div id="fixed-card-library" onclick="selectFixedMode('library')"
+          style="flex:1;background:var(--elevated);border:2px solid var(--divider);border-radius:12px;padding:12px;cursor:pointer;text-align:center">
+          <div style="font-size:22px;margin-bottom:6px">📖</div>
+          <div style="font-size:14px;font-weight:600">Aus Bibliothek</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">Rezept auswählen</div>
+        </div>
+        <div id="fixed-card-free" onclick="selectFixedMode('free')"
+          style="flex:1;background:var(--elevated);border:2px solid var(--divider);border-radius:12px;padding:12px;cursor:pointer;text-align:center">
+          <div style="font-size:22px;margin-bottom:6px">✏️</div>
+          <div style="font-size:14px;font-weight:600">Freies Rezept</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">Selbst beschreiben</div>
+        </div>
+      </div>
+
+      <!-- Dynamischer Bereich: erscheint nach Auswahl -->
+      <div id="fixed-mode-content" style="display:none">
+        <div class="field" id="fixed-recipe-select-field" style="display:none">
+          <label>Rezept auswählen</label>
+          <select id="fixed-recipe-select">
+            <option value="">Rezept auswählen...</option>
+          </select>
+        </div>
+        <div class="field" id="fixed-desc-field" style="display:none">
+          <label>Mahlzeit / Lebensmittel beschreiben</label>
+          <textarea id="fixed-desc" placeholder="z.B. Haferflocken mit Milch und frischem Obst"></textarea>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Mahlzeit-Typ</label>
+        <select id="fixed-type">
+          <option value="breakfast">🌅 Frühstück</option>
+          <option value="lunch">☀️ Mittagessen</option>
+          <option value="dinner">🌙 Abendessen</option>
+          <option value="snack">🍃 Snack</option>
+          <option value="any">🍴 Beliebig</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Tage</label>
+        <div class="day-toggle-row" id="fixed-days-toggle">
+          <button class="day-toggle-btn active" data-day="all" onclick="toggleFixedDay('all')">Täglich</button>
+          <button class="day-toggle-btn" data-day="mon" onclick="toggleFixedDay('mon')">Mo</button>
+          <button class="day-toggle-btn" data-day="tue" onclick="toggleFixedDay('tue')">Di</button>
+          <button class="day-toggle-btn" data-day="wed" onclick="toggleFixedDay('wed')">Mi</button>
+          <button class="day-toggle-btn" data-day="thu" onclick="toggleFixedDay('thu')">Do</button>
+          <button class="day-toggle-btn" data-day="fri" onclick="toggleFixedDay('fri')">Fr</button>
+          <button class="day-toggle-btn" data-day="sat" onclick="toggleFixedDay('sat')">Sa</button>
+          <button class="day-toggle-btn" data-day="sun" onclick="toggleFixedDay('sun')">So</button>
+        </div>
+      </div>
+      <button class="btn-gold" onclick="saveFixedMeal()" style="margin-top:8px">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- PERSON BEARBEITEN MODAL -->
+<div class="modal-overlay" id="modal-person" onclick="closeModal('modal-person')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title">Person bearbeiten</span>
+      <button class="modal-close" onclick="closeModal('modal-person')">✕</button>
+    </div>
+    <div class="modal-body" id="modal-person-body"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════
+const MODELS = [
+  { id: 'meta-llama/Llama-3.1-8B-Instruct',   name: 'Llama 3.1 8B (Empfohlen)' },
+  { id: 'Qwen/Qwen2.5-7B-Instruct',           name: 'Qwen 2.5 7B' },
+  { id: 'mistralai/Mistral-7B-Instruct-v0.3', name: 'Mistral 7B' },
+  { id: 'microsoft/Phi-3.5-mini-instruct',     name: 'Phi-3.5 Mini (Schnell)' }
+];
+
+const MEAL_META = {
+  breakfast: { label: 'Frühstück',   icon: '🌅' },
+  lunch:     { label: 'Mittagessen', icon: '☀️' },
+  dinner:    { label: 'Abendessen',  icon: '🌙' },
+  snack:     { label: 'Snack',       icon: '🍃' },
+  any:       { label: 'Flexibel',    icon: '🍴' }
+};
+
+// ÄNDERUNG 4: Kalorien-Standard auf 1350, Maximum bleibt bei 2000
+let state = {
+  settings: {
+    calories: 1350, mealsPerDay: 3, diet: 'Alles',
+    hfModel: 'meta-llama/Llama-3.1-8B-Instruct',
+    token: '', disliked: [], avoided: [],
+    mainMeal: 'midday',
+    restrictionBreakfast: '',
+    restrictionLunch: '',
+    restrictionDinner: '',
+    restrictionSnack: ''
+  },
+  recipes: [],
+  plan: null,
+  shopping: [],
+  numberOfDays: 7,
+  // ÄNDERUNG 1: Mahlzeiten-Gedächtnis
+  mealHistory: [],
+  // ÄNDERUNG 2: Eigene Einkaufsartikel
+  customItems: [],
+  // ÄNDERUNG 5: Feste Mahlzeiten
+  fixedMeals: [],
+  // Haushalt
+  household: {
+    persons: [
+      {
+        id: 'main',
+        name: 'Ich',
+        isMain: true,
+        diet: 'Alles',
+        disliked: [],
+        avoided: [],
+        restrictionBreakfast: '',
+        restrictionLunch: '',
+        restrictionDinner: '',
+        restrictionSnack: ''
+      }
+    ],
+    sharedMeals: { breakfast: false, lunch: true, dinner: true, snack: false }
+  }
+};
+
+// Temp state for new recipe form
+let _recipeForm = { calories: 400, servings: 1, prep: 30 };
+// Temp state for cooking modal ingredient checks (not used in new cooking view but kept for compatibility)
+let _cookChecked = {};
+// Temp state for fixed meal day toggles
+let _fixedDaysSelection = ['all'];
+
+function save() {
+  try { localStorage.setItem('nutriplan', JSON.stringify(state)); } catch(e) {}
+  // ÄNDERUNG 1: Mahlzeiten-Geschichte separat speichern
+  try { localStorage.setItem('nutriplan_meal_history', JSON.stringify(state.mealHistory)); } catch(e) {}
+  // ÄNDERUNG 2: Custom Items separat speichern
+  try { localStorage.setItem('nutriplan_custom_items', JSON.stringify(state.customItems)); } catch(e) {}
+  // ÄNDERUNG 5: Fixed Meals separat speichern
+  try { localStorage.setItem('nutriplan_fixed_meals', JSON.stringify(state.fixedMeals)); } catch(e) {}
+  // Household speichern
+  try { localStorage.setItem('nutriplan_household', JSON.stringify(state.household)); } catch(e) {}
+}
+
+function load() {
+  try {
+    const d = localStorage.getItem('nutriplan');
+    if (d) state = { ...state, ...JSON.parse(d) };
+  } catch(e) {}
+  // ÄNDERUNG 1: Mahlzeiten-Geschichte laden
+  try {
+    const h = localStorage.getItem('nutriplan_meal_history');
+    if (h) state.mealHistory = JSON.parse(h);
+  } catch(e) { state.mealHistory = []; }
+  // ÄNDERUNG 2: Custom Items laden
+  try {
+    const ci = localStorage.getItem('nutriplan_custom_items');
+    if (ci) state.customItems = JSON.parse(ci);
+  } catch(e) { state.customItems = []; }
+  // ÄNDERUNG 5: Fixed Meals laden
+  try {
+    const fm = localStorage.getItem('nutriplan_fixed_meals');
+    if (fm) state.fixedMeals = JSON.parse(fm);
+  } catch(e) { state.fixedMeals = []; }
+  // Household laden
+  try {
+    const hh = localStorage.getItem('nutriplan_household');
+    if (hh) state.household = JSON.parse(hh);
+  } catch(e) {}
+  // Fallback
+  if (!state.household) state.household = {
+    persons: [{id:'main',name:'Ich',isMain:true,diet:'Alles',disliked:[],avoided:[],restrictionBreakfast:'',restrictionLunch:'',restrictionDinner:'',restrictionSnack:''}],
+    sharedMeals: {breakfast:false,lunch:true,dinner:true,snack:false}
+  };
+  // Sync Hauptperson mit settings
+  if (state.household.persons && state.household.persons[0]) {
+    state.household.persons[0].disliked = state.settings.disliked || [];
+    state.household.persons[0].avoided = state.settings.avoided || [];
+    state.household.persons[0].restrictionBreakfast = state.settings.restrictionBreakfast || '';
+    state.household.persons[0].restrictionLunch = state.settings.restrictionLunch || '';
+    state.household.persons[0].restrictionDinner = state.settings.restrictionDinner || '';
+    state.household.persons[0].restrictionSnack = state.settings.restrictionSnack || '';
+    state.household.persons[0].diet = state.settings.diet || 'Alles';
+  }
+}
+
+// ═══════════════════════════════════════════════
+// TAB SWITCHING
+// ═══════════════════════════════════════════════
+let currentTab = 'plan';
+function switchTab(tab) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + tab).classList.add('active');
+  document.getElementById('tab-' + tab).classList.add('active');
+  currentTab = tab;
+  renderTab(tab);
+}
+function renderTab(tab) {
+  if (tab === 'plan')     renderPlan();
+  if (tab === 'recipes')  renderRecipes();
+  if (tab === 'shopping') renderShopping();
+  if (tab === 'fixes')    renderFixes();
+  if (tab === 'settings') renderSettings();
+}
+
+// ═══════════════════════════════════════════════
+// MODALS
+// ═══════════════════════════════════════════════
+function openModal(id) {
+  const el = document.getElementById(id);
+  el.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+// ═══════════════════════════════════════════════
+// PLAN VIEW
+// ═══════════════════════════════════════════════
+let isGenerating = false;
+
+function renderPlan() {
+  const c = document.getElementById('plan-content');
+  const tokenOk = !!state.settings.token.trim();
+  const modelName = MODELS.find(m => m.id === state.settings.hfModel)?.name || state.settings.hfModel;
+
+  let html = `
+  <div class="card" style="border: 1px solid rgba(201,171,110,.2)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div>
+        <div style="font-size:16px;font-weight:600">Neuer Essensplan</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">⚙️ ${modelName}</div>
+      </div>
+      <div style="font-size:24px">✨</div>
+    </div>
+    <div class="divider"></div>
+    <div class="field-row" style="margin:10px 0">
+      <span style="font-size:15px">Anzahl Tage</span>
+      <div class="stepper">
+        <button class="stepper-btn" onclick="changeDays(-1)">−</button>
+        <span class="stepper-val" id="days-val">${state.numberOfDays}</span>
+        <button class="stepper-btn" onclick="changeDays(1)">+</button>
+      </div>
+    </div>
+    <button class="btn-gold" id="gen-btn" onclick="generatePlan()" ${!tokenOk || isGenerating ? 'disabled' : ''}>
+      ${isGenerating
+        ? '<div class="spinner"></div><span>Wird erstellt…</span>'
+        : '✨ Plan erstellen'}
+    </button>
+    ${!tokenOk ? '<p style="font-size:12px;color:var(--bronze);margin-top:10px;text-align:center">⚠️ Hugging Face Token in Einstellungen erforderlich</p>' : ''}
+  </div>`;
+
+  if (isGenerating) {
+    html += `<div class="card" style="display:flex;gap:14px;align-items:center">
+      <div class="spinner"></div>
+      <div>
+        <div style="font-size:14px;font-weight:500">KI erstellt deinen Plan…</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">Saisonalität, Nährstoffe & Abwechslung werden berücksichtigt</div>
+      </div>
+    </div>`;
+  }
+
+  if (state.plan) {
+    html += `<div class="card" style="display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:16px;font-weight:700">${state.plan.days.length}-Tage-Plan</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">Erstellt ${new Date(state.plan.generatedAt).toLocaleString('de-DE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</div>
+      </div>
+      <div style="font-size:24px">📅</div>
+    </div>`;
+    for (const day of state.plan.days) {
+      html += renderDayCard(day);
+    }
+  } else if (!isGenerating) {
+    html += `<div class="empty-state">
+      <div class="empty-icon">📅</div>
+      <div class="empty-title">Noch kein Plan erstellt</div>
+      <div class="empty-text">Wähle die Anzahl Tage und tippe auf „Plan erstellen".</div>
+    </div>`;
+  }
+
+  c.innerHTML = html;
+}
+
+function renderDayCard(day) {
+  const ratio = day.totalCalories / state.settings.calories;
+  const cls = ratio > 1.12 ? 'red' : ratio < 0.88 ? 'gold' : 'green';
+  const barPct = Math.min(ratio * 100, 100).toFixed(1);
+  const barColor = cls === 'green' ? 'var(--green)' : cls === 'gold' ? 'var(--gold)' : 'var(--red)';
+
+  let meals = day.meals.map(m => `
+    <div class="meal-row">
+      <span class="meal-icon">${MEAL_META[m.type]?.icon || '🍴'}</span>
+      <div class="meal-info">
+        <div class="meal-type">${MEAL_META[m.type]?.label || m.type}${m.isUserRecipe ? ' ⭐' : ''}</div>
+        <div class="meal-name">${m.name}</div>
+      </div>
+      <span class="meal-kcal">${m.calories} kcal</span>
+    </div>`).join('');
+
+  return `<div class="day-card" onclick="openDayModal(${day.dayNumber})">
+    <div class="day-card-header">
+      <span class="day-num">Tag ${day.dayNumber}</span>
+      <span class="day-kcal ${cls}">🔥 ${day.totalCalories} kcal</span>
+    </div>
+    <div class="cal-bar">
+      <div class="progress-track"><div class="progress-fill" style="width:${barPct}%;background:${barColor}"></div></div>
+    </div>
+    ${meals}
+    <div class="day-hint">Tippen für Details ›</div>
+  </div>`;
+}
+
+function changeDays(delta) {
+  state.numberOfDays = Math.max(1, Math.min(14, state.numberOfDays + delta));
+  save();
+  const el = document.getElementById('days-val');
+  if (el) el.textContent = state.numberOfDays;
+}
+
+// ═══════════════════════════════════════════════
+// DAY DETAIL MODAL
+// ═══════════════════════════════════════════════
+function openDayModal(dayNum) {
+  const day = state.plan?.days.find(d => d.dayNumber === dayNum);
+  if (!day) return;
+
+  document.getElementById('modal-day-title').textContent = `Tag ${dayNum} · ${day.totalCalories} kcal`;
+
+  let html = `<div style="margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:6px">
+      <span>${day.meals.length} Mahlzeiten</span><span>${day.totalCalories} kcal</span>
+    </div>
+    <div class="progress-track"><div class="progress-fill green" style="width:${Math.min(day.totalCalories/state.settings.calories*100,100).toFixed(1)}%"></div></div>
+  </div>`;
+
+  for (const meal of day.meals) {
+    const recipe = state.recipes.find(r => r.id === meal.linkedRecipeId);
+    html += `<div class="card" style="margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:12px;color:var(--gold);font-weight:600">${MEAL_META[meal.type]?.icon} ${MEAL_META[meal.type]?.label}</span>
+        <span class="badge gold">${meal.calories} kcal</span>
+      </div>
+      <div style="font-size:17px;font-weight:700;margin-bottom:6px">${meal.name}</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:10px;line-height:1.5">${meal.description}</div>
+      ${meal.ingredients.length ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px">
+        ${meal.ingredients.slice(0,6).map(i => `<span style="font-size:12px;padding:3px 8px;background:var(--elevated);border-radius:7px">${i}</span>`).join('')}
+        ${meal.ingredients.length > 6 ? `<span style="font-size:12px;color:var(--muted)">+${meal.ingredients.length-6} mehr</span>` : ''}
+      </div>` : ''}
+      ${meal.nutritionHighlights ? `<div class="info-box" style="margin-bottom:10px"><span>🌿 ${meal.nutritionHighlights}</span></div>` : ''}
+      ${recipe ? `<div style="font-size:12px;color:var(--gold);margin-bottom:10px">⭐ Eigenes Rezept: ${recipe.name}</div>` : ''}
+      <button class="btn-gold" onclick="openCookModal(${dayNum}, '${meal.id}')">🍳 Jetzt kochen</button>
+    </div>`;
+  }
+
+  document.getElementById('modal-day-body').innerHTML = html;
+  openModal('modal-day');
+}
+
+// ═══════════════════════════════════════════════
+// COOKING MODAL (ÄNDERUNG 3: Zubereitung statt Checkboxen)
+// ═══════════════════════════════════════════════
+function openCookModal(dayNum, mealId) {
+  const day = state.plan?.days.find(d => d.dayNumber === dayNum);
+  const meal = day?.meals.find(m => m.id === mealId);
+  if (!meal) return;
+
+  const recipe = state.recipes.find(r => r.id === meal.linkedRecipeId);
+  const ingredients = (recipe?.ingredients?.length ? recipe.ingredients : meal.ingredients) || [];
+
+  const isShared = state.household?.sharedMeals?.[meal.type] === true;
+  const defaultPortions = isShared ? (state.household?.persons?.length || 1) : 1;
+  window._cookPortions = defaultPortions;
+  window._cookIngredients = ingredients;
+
+  // Zubereitungsschritte: zuerst meal.steps (KI-generiert), dann recipe.instructions als Fallback
+  let steps = [];
+  if (Array.isArray(meal.steps) && meal.steps.length) {
+    steps = meal.steps;
+  } else if (recipe?.instructions) {
+    steps = recipe.instructions.split('\n').map(s => s.trim()).filter(Boolean);
+  } else if (meal.instructions) {
+    steps = Array.isArray(meal.instructions)
+      ? meal.instructions
+      : meal.instructions.split('\n').map(s => s.trim()).filter(Boolean);
+  }
+
+  let html = '';
+  if (recipe?.photo) {
+    html += `<img src="${recipe.photo}" alt="" style="width:100%;max-height:220px;object-fit:cover;border-radius:8px;display:block;margin-bottom:14px">`;
+  }
+  html += `
+  <div class="card" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="width:48px;height:48px;border-radius:24px;background:rgba(201,171,110,.14);display:flex;align-items:center;justify-content:center;font-size:22px">${MEAL_META[meal.type]?.icon}</div>
+      <div>
+        <div style="font-size:12px;color:var(--muted)">${MEAL_META[meal.type]?.label}</div>
+        <div style="font-size:17px;font-weight:700">${meal.name}</div>
+        <div style="font-size:12px;color:var(--gold);margin-top:2px">🔥 ${meal.calories} kcal${recipe ? ` · ⏱ ${recipe.prepTimeMinutes} Min.` : ''}</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid var(--divider)">
+      <span style="font-size:14px;color:var(--muted)">Portionen</span>
+      <div class="stepper">
+        <button class="stepper-btn" onclick="changeCookPortions(-1)">−</button>
+        <span class="stepper-val" id="cook-portions-val">${defaultPortions}</span>
+        <button class="stepper-btn" onclick="changeCookPortions(1)">+</button>
+      </div>
+    </div>
+  </div>`;
+
+  // Zutaten als einfache Liste mit Skalierung
+  if (ingredients.length) {
+    html += `<div class="card" style="margin-bottom:14px" id="cook-ingredients-card">
+      <div class="card-title">Zutaten</div>
+      <ul style="list-style:disc;padding-left:20px;margin:0" id="cook-ingredients-list">`;
+    ingredients.forEach(ing => {
+      const scaled = scaleIngredient(ing, window._cookPortions);
+      html += `<li style="font-size:14px;padding:5px 0;border-bottom:1px solid var(--divider);list-style-position:outside">${scaled}</li>`;
+    });
+    html += `</ul>
+    </div>`;
+  }
+
+  // ÄNDERUNG 3: Zubereitungsschritte als nummerierte Liste
+  if (steps.length) {
+    html += `<div class="card" style="margin-bottom:14px">
+      <div class="card-title">Zubereitung</div>
+      <ol style="list-style:none;padding:0;margin:0">`;
+    steps.forEach((step, i) => {
+      html += `<div class="step-row" onclick="toggleStep(${i})">
+        <div class="step-num ${i===0?'active':''}" id="step-num-${i}">${i+1}</div>
+        <div class="step-text ${i===0?'active':''}" id="step-txt-${i}">${step}</div>
+      </div>`;
+    });
+    html += `</ol></div>`;
+  } else {
+    html += `<div class="card" style="margin-bottom:14px">
+      <div class="card-title">Zubereitung</div>
+      <p style="font-size:14px;color:var(--muted);line-height:1.6">${meal.description || 'Keine Zubereitungsanleitung verfügbar.'}</p>
+    </div>`;
+  }
+
+  if (meal.nutritionHighlights) {
+    html += `<div class="info-box" style="margin-bottom:14px"><span>🌿 ${meal.nutritionHighlights}</span></div>`;
+  }
+
+  document.getElementById('modal-cook-body').innerHTML = html;
+  closeModal('modal-day');
+  openModal('modal-cook');
+}
+
+function toggleStep(i) {
+  document.querySelectorAll('.step-num').forEach((el, j) => {
+    el.classList.toggle('active', j === i);
+    document.getElementById('step-txt-' + j)?.classList.toggle('active', j === i);
+  });
+}
+
+function scaleIngredient(ingredientStr, factor) {
+  if (!factor || factor <= 1) return ingredientStr;
+  return ingredientStr.replace(/^(\d+(?:[.,]\d+)?)\s*/, (_, n) => {
+    const scaled = Math.round(parseFloat(n.replace(',', '.')) * factor);
+    return scaled + ' ';
+  });
+}
+
+function changeCookPortions(delta) {
+  window._cookPortions = Math.max(1, Math.min(10, (window._cookPortions || 1) + delta));
+  const valEl = document.getElementById('cook-portions-val');
+  if (valEl) valEl.textContent = window._cookPortions;
+  const listEl = document.getElementById('cook-ingredients-list');
+  if (listEl && window._cookIngredients) {
+    listEl.innerHTML = window._cookIngredients.map(ing => {
+      const scaled = scaleIngredient(ing, window._cookPortions);
+      return `<li style="font-size:14px;padding:5px 0;border-bottom:1px solid var(--divider);list-style-position:outside">${scaled}</li>`;
+    }).join('');
+  }
+}
+</script>
+
+<script>
+// ═══════════════════════════════════════════════
+// RECIPES VIEW
+// ═══════════════════════════════════════════════
+function renderRecipes() {
+  const c = document.getElementById('recipes-content');
+  // Hidden file input for PDF import (rendered once)
+  if (!document.getElementById('pdf-file-input')) {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = '.pdf'; inp.id = 'pdf-file-input';
+    inp.style.display = 'none';
+    inp.addEventListener('change', e => { if (e.target.files[0]) handlePDFImport(e.target.files[0]); inp.value = ''; });
+    document.body.appendChild(inp);
+  }
+
+  if (!state.recipes.length) {
+    c.innerHTML = `<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px">
+      <button style="padding:10px 14px;background:var(--elevated);border:none;border-radius:14px;color:var(--text);font-size:14px;font-weight:600;cursor:pointer" onclick="document.getElementById('pdf-file-input').click()">📄 PDF importieren</button>
+      <button class="btn-gold" style="width:auto;padding:10px 20px" onclick="openAddRecipe()">+ Rezept</button>
+    </div>
+    <div class="empty-state">
+      <div class="empty-icon">📖</div>
+      <div class="empty-title">Noch keine Rezepte</div>
+      <div class="empty-text">Füge deine Lieblingsrezepte hinzu, damit die KI sie in den Plan einbaut.</div>
+    </div>`;
+    return;
+  }
+
+  const groups = {};
+  for (const r of state.recipes) {
+    const cat = r.category || 'any';
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(r);
+  }
+
+  let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <div style="font-size:22px;font-weight:700">Meine Rezepte</div>
+    <div style="display:flex;gap:8px">
+      <button style="padding:10px 12px;background:var(--elevated);border:none;border-radius:14px;color:var(--text);font-size:13px;font-weight:600;cursor:pointer" onclick="document.getElementById('pdf-file-input').click()">📄 PDF</button>
+      <button class="btn-gold" style="width:auto;padding:10px 18px" onclick="openAddRecipe()">+ Neu</button>
+    </div>
+  </div>`;
+
+  for (const [cat, recipes] of Object.entries(groups)) {
+    const m = MEAL_META[cat] || MEAL_META.any;
+    html += `<div class="cat-label">${m.icon} ${m.label}</div>`;
+    for (const r of recipes) {
+      const photoTop = r.photo ? `<img class="recipe-card-photo" src="${r.photo}" alt="">` : '';
+      html += `<div style="background:var(--card);border-radius:12px;margin-bottom:10px;cursor:pointer;overflow:hidden" onclick="openRecipeDetail('${r.id}')">
+        ${photoTop}
+        <div style="display:flex;align-items:center;gap:12px;padding:13px">
+          ${r.photo ? '' : `<div class="recipe-icon">${m.icon}</div>`}
+          <div style="flex:1;min-width:0">
+            <div class="recipe-name">${r.name}</div>
+            <div class="recipe-meta">🔥 ${Math.round(r.calories/(r.servings||1))} kcal · ⏱ ${r.prepTimeMinutes} Min.</div>
+          </div>
+          <svg style="flex-shrink:0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+      </div>`;
+    }
+  }
+  c.innerHTML = html;
+}
+
+function openAddRecipe(existingRecipeId) {
+  _recipeForm = { calories: 400, servings: 1, prep: 30 };
+  document.getElementById('r-name').value = '';
+  document.getElementById('r-cat').value = 'any';
+  document.getElementById('r-ingredients').value = '';
+  document.getElementById('r-instructions').value = '';
+  document.getElementById('r-notes').value = '';
+  document.getElementById('r-cal-val').textContent = '400';
+  document.getElementById('r-srv-val').textContent = '1';
+  document.getElementById('r-prep-val').textContent = '30';
+  window._recipePhotoData = null;
+  window._editRecipeId = null;
+  // Prefill if editing existing
+  if (existingRecipeId) {
+    const r = state.recipes.find(x => x.id === existingRecipeId);
+    if (r) {
+      window._editRecipeId = existingRecipeId;
+      document.getElementById('r-name').value = r.name;
+      document.getElementById('r-cat').value = r.category || 'any';
+      document.getElementById('r-ingredients').value = (r.ingredients||[]).join('\n');
+      document.getElementById('r-instructions').value = r.instructions || '';
+      document.getElementById('r-notes').value = r.notes || '';
+      _recipeForm.calories = r.calories;
+      _recipeForm.servings = r.servings;
+      _recipeForm.prep = r.prepTimeMinutes;
+      document.getElementById('r-cal-val').textContent = r.calories;
+      document.getElementById('r-srv-val').textContent = r.servings;
+      document.getElementById('r-prep-val').textContent = r.prepTimeMinutes;
+      window._recipePhotoData = r.photo || null;
+    }
+  }
+  renderRecipePhotoPreview();
+  // Wire up file input (once)
+  const inp = document.getElementById('recipe-photo-input');
+  inp.value = '';
+  inp.onchange = function(e) {
+    if (e.target.files[0]) {
+      scanRecipePhoto(e.target.files[0]);
+      inp.value = '';
+    }
+  };
+  openModal('modal-add-recipe');
+}
+
+function renderRecipePhotoPreview() {
+  const wrap = document.getElementById('recipe-photo-preview');
+  if (!wrap) return;
+  if (window._recipePhotoData) {
+    wrap.innerHTML = `<div class="photo-preview-wrap">
+      <img class="photo-preview-img" src="${window._recipePhotoData}" alt="Vorschau">
+      <button class="photo-remove-btn" onclick="removeRecipePhoto()" title="Foto entfernen">✕</button>
+    </div>`;
+  } else {
+    wrap.innerHTML = `<div class="photo-upload-box" onclick="document.getElementById('recipe-photo-input').click()" style="height:auto;padding:18px 16px;gap:8px">
+      <span style="font-size:30px">📷</span>
+      <span style="font-size:14px;font-weight:600;color:var(--text)">Rezept fotografieren / scannen</span>
+      <span style="font-size:12px;color:var(--muted);text-align:center">KI erkennt Zutaten &amp; Zubereitung automatisch</span>
+    </div>
+    <div id="recipe-scan-status" style="display:none;margin-top:8px;font-size:13px;text-align:center"></div>`;
+  }
+}
+
+function removeRecipePhoto() {
+  window._recipePhotoData = null;
+  renderRecipePhotoPreview();
+}
+
+function parseVisionResponse(text) {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('Kein JSON gefunden');
+  return JSON.parse(match[0]);
+}
+
+function showScanStatus(msg) {
+  const el = document.getElementById('recipe-scan-status');
+  if (el) { el.style.display = ''; el.textContent = msg; }
+}
+
+async function scanRecipePhoto(file) {
+  const token = state.settings.token.trim();
+  if (!token) {
+    alert('Bitte zuerst HuggingFace-Token in den Einstellungen eingeben.');
+    return;
+  }
+
+  // Show the upload box area and status
+  renderRecipePhotoPreview();
+  const uploadBox = document.querySelector('#recipe-photo-preview .photo-upload-box');
+  if (uploadBox) uploadBox.style.opacity = '0.5';
+  showScanStatus('🔍 Rezept wird erkannt…');
+
+  try {
+    // Resize image for vision API (max 1024px, JPEG 0.85)
+    const base64 = await new Promise((resolve, reject) => {
+      resizeImageToBase64(file, 1024, 0.85, resolve);
+    });
+
+    // Strip the data URL prefix to get pure base64, then reconstruct full data URL
+    const imageUrl = base64; // resizeImageToBase64 already returns data:image/jpeg;base64,...
+
+    const resp = await fetch('/api/hf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        _token: token,
+        model: 'meta-llama/Llama-3.2-11B-Vision-Instruct',
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: imageUrl } },
+            { type: 'text', text: 'Du bist ein Kochbuch-Scanner. Analysiere dieses Rezeptfoto und extrahiere alle Informationen.\n\nAntworte NUR mit diesem JSON (kein Text davor oder danach):\n{\n  "name": "Rezeptname",\n  "ingredients": ["200g Mehl", "3 Eier"],\n  "steps": ["Schritt 1: ...", "Schritt 2: ..."],\n  "calories": 450,\n  "duration": 30\n}\n\nRegeln:\n- ingredients: jede Zutat als eigener String mit Menge\n- steps: klare, nummerierte Schritte\n- calories: geschätzte kcal pro Portion (oder null wenn unbekannt)\n- duration: geschätzte Zubereitungszeit in Minuten (oder null)\n- Antworte auf Deutsch' }
+          ]
+        }],
+        max_tokens: 2000,
+        temperature: 0.3,
+        stream: false
+      })
+    });
+
+    if (!resp.ok) {
+      const body = await resp.text();
+      throw new Error('API-Fehler ' + resp.status + ': ' + body.slice(0, 200));
+    }
+
+    const data = await resp.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    const parsed = parseVisionResponse(content);
+
+    // Store photo as recipe image
+    window._recipePhotoData = base64;
+    renderRecipePhotoPreview();
+
+    // Fill form fields
+    if (parsed.name) document.getElementById('r-name').value = parsed.name;
+    if (parsed.ingredients && parsed.ingredients.length) {
+      document.getElementById('r-ingredients').value = parsed.ingredients.join('\n');
+    }
+    if (parsed.steps && parsed.steps.length) {
+      document.getElementById('r-instructions').value = parsed.steps.join('\n');
+    }
+    if (parsed.calories && !isNaN(parsed.calories)) {
+      const cal = Math.max(50, Math.min(3000, Math.round(parsed.calories / 50) * 50));
+      _recipeForm.calories = cal;
+      const calEl = document.getElementById('r-cal-val');
+      if (calEl) calEl.textContent = cal;
+    }
+    if (parsed.duration && !isNaN(parsed.duration)) {
+      const dur = Math.max(5, Math.min(300, Math.round(parsed.duration / 5) * 5));
+      _recipeForm.prep = dur;
+      const prepEl = document.getElementById('r-prep-val');
+      if (prepEl) prepEl.textContent = dur;
+    }
+
+    showScanStatus('✅ Rezept erkannt – bitte prüfen');
+  } catch(e) {
+    showScanStatus('❌ Erkennung fehlgeschlagen – Felder manuell ausfüllen');
+    console.error('Vision scan error:', e);
+  }
+}
+
+function resizeImageToBase64(file, maxSize, quality, callback) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let w = img.width, h = img.height;
+      if (w > maxSize || h > maxSize) {
+        if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
+        else { w = Math.round(w * maxSize / h); h = maxSize; }
+      }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      callback(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function stepRecipe(field, delta) {
+  const limits = { calories: [50,3000,50], servings: [1,10,1], prep: [5,300,5] };
+  const ids = { calories: 'r-cal-val', servings: 'r-srv-val', prep: 'r-prep-val' };
+  const [min, max] = limits[field];
+  _recipeForm[field] = Math.max(min, Math.min(max, _recipeForm[field] + delta));
+  document.getElementById(ids[field]).textContent = _recipeForm[field];
+}
+
+function saveRecipe() {
+  const name = document.getElementById('r-name').value.trim();
+  const ingredientText = document.getElementById('r-ingredients').value.trim();
+  if (!name || !ingredientText) { alert('Bitte Name und Zutaten ausfüllen.'); return; }
+  const recipeData = {
+    name,
+    category: document.getElementById('r-cat').value,
+    calories: _recipeForm.calories,
+    servings: _recipeForm.servings,
+    prepTimeMinutes: _recipeForm.prep,
+    ingredients: ingredientText.split('\n').map(s=>s.trim()).filter(Boolean),
+    instructions: document.getElementById('r-instructions').value.trim(),
+    notes: document.getElementById('r-notes').value.trim(),
+    photo: window._recipePhotoData || null
+  };
+  if (window._editRecipeId) {
+    const idx = state.recipes.findIndex(r => r.id === window._editRecipeId);
+    if (idx !== -1) {
+      state.recipes[idx] = { ...state.recipes[idx], ...recipeData };
+    }
+  } else {
+    state.recipes.push({ id: crypto.randomUUID(), createdAt: new Date().toISOString(), ...recipeData });
+  }
+  window._recipePhotoData = null;
+  window._editRecipeId = null;
+  save();
+  closeModal('modal-add-recipe');
+  renderRecipes();
+}
+
+function openRecipeDetail(id) {
+  const r = state.recipes.find(x => x.id === id);
+  if (!r) return;
+  const m = MEAL_META[r.category] || MEAL_META.any;
+  const kcalPerServing = Math.round(r.calories / (r.servings || 1));
+  let html = '';
+  if (r.photo) {
+    html += `<img src="${r.photo}" alt="" style="width:100%;max-height:220px;object-fit:cover;border-radius:8px;display:block;margin-bottom:14px">`;
+  }
+  html += `
+  <div class="card" style="margin-bottom:14px">
+    <div style="display:flex;gap:14px;align-items:center">
+      <div style="width:60px;height:60px;border-radius:30px;background:rgba(201,171,110,.14);display:flex;align-items:center;justify-content:center;font-size:28px">${m.icon}</div>
+      <div>
+        <div style="font-size:20px;font-weight:700">${r.name}</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:3px">${m.label}</div>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="display:flex;margin-bottom:14px;text-align:center">
+    <div style="flex:1;padding:12px"><div style="font-size:20px;font-weight:700;color:var(--gold)">${kcalPerServing}</div><div style="font-size:11px;color:var(--muted)">kcal</div></div>
+    <div style="width:1px;background:var(--divider)"></div>
+    <div style="flex:1;padding:12px"><div style="font-size:20px;font-weight:700">${r.servings}</div><div style="font-size:11px;color:var(--muted)">Portionen</div></div>
+    <div style="width:1px;background:var(--divider)"></div>
+    <div style="flex:1;padding:12px"><div style="font-size:20px;font-weight:700;color:var(--green)">${r.prepTimeMinutes}</div><div style="font-size:11px;color:var(--muted)">Min.</div></div>
+  </div>`;
+  if (r.ingredients?.length) {
+    html += `<div class="card" style="margin-bottom:14px"><div class="card-title">Zutaten</div>`;
+    r.ingredients.forEach(ing => {
+      html += `<div style="display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--divider)"><div style="width:6px;height:6px;border-radius:3px;background:var(--gold);flex-shrink:0"></div><span style="font-size:14px">${ing}</span></div>`;
+    });
+    html += `</div>`;
+  }
+  if (r.instructions) {
+    html += `<div class="card" style="margin-bottom:14px"><div class="card-title">Zubereitung</div><p style="font-size:14px;line-height:1.7;color:var(--muted)">${r.instructions.replace(/\n/g,'<br>')}</p></div>`;
+  }
+  if (r.notes) {
+    html += `<div class="card" style="margin-bottom:14px"><div class="card-title">Notizen</div><p style="font-size:14px;font-style:italic;color:var(--muted)">${r.notes}</p></div>`;
+  }
+  html += `<div style="display:flex;gap:10px;margin-top:4px">
+    <button onclick="closeModal('modal-recipe-detail');openAddRecipe('${r.id}')" style="flex:1;padding:13px;background:var(--elevated);border:none;border-radius:12px;color:var(--text);font-size:15px;cursor:pointer">✏️ Bearbeiten</button>
+    <button onclick="deleteRecipe('${r.id}')" style="flex:1;padding:13px;background:rgba(191,77,64,.1);border:none;border-radius:12px;color:var(--red);font-size:15px;cursor:pointer">🗑 Löschen</button>
+  </div>`;
+  document.getElementById('modal-recipe-body').innerHTML = html;
+  openModal('modal-recipe-detail');
+}
+
+function deleteRecipe(id) {
+  if (!confirm('Rezept wirklich löschen?')) return;
+  state.recipes = state.recipes.filter(r => r.id !== id);
+  save();
+  closeModal('modal-recipe-detail');
+  renderRecipes();
+}
+
+async function importRecipePDF(file) {
+  if (!window.pdfjsLib) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+  let text = '';
+  for (let i = 1; i <= Math.min(pdf.numPages, 10); i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(item => item.str).join(' ') + '\n';
+  }
+  return text;
+}
+
+async function handlePDFImport(file) {
+  try {
+    const text = await importRecipePDF(file);
+    const truncated = text.slice(0, 2000);
+    const fileName = file.name.replace(/\.pdf$/i, '');
+    // Open modal and prefill
+    openAddRecipe();
+    setTimeout(() => {
+      document.getElementById('r-name').value = fileName;
+      document.getElementById('r-instructions').value = truncated;
+      // Show hint
+      const hint = document.createElement('div');
+      hint.id = 'pdf-import-hint';
+      hint.style.cssText = 'font-size:12px;color:var(--green);margin-top:8px;text-align:center';
+      hint.textContent = '📄 PDF importiert – bitte Felder prüfen und anpassen';
+      const existing = document.getElementById('pdf-import-hint');
+      if (existing) existing.remove();
+      const btn = document.querySelector('#modal-add-recipe .btn-gold');
+      if (btn) btn.parentNode.insertBefore(hint, btn);
+    }, 100);
+  } catch(e) {
+    alert('PDF-Import nicht verfügbar. Bitte Rezept manuell eingeben.');
+  }
+}
+
+// ═══════════════════════════════════════════════
+// SHOPPING VIEW (ÄNDERUNG 2: Eigene Artikel)
+// ═══════════════════════════════════════════════
+function renderShopping() {
+  const c = document.getElementById('shopping-content');
+  if (!state.plan && !state.customItems?.length) {
+    c.innerHTML = `<div class="empty-state"><div class="empty-icon">🛒</div><div class="empty-title">Noch kein Plan</div><div class="empty-text">Erstelle zuerst einen Essensplan, dann wird hier der Einkaufszettel automatisch generiert.</div></div>
+    ${renderCustomItemsSection()}`;
+    return;
+  }
+  if (!state.shopping?.length && state.plan) {
+    c.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">🛒</div>
+      <div class="empty-title">Einkaufszettel erstellen</div>
+      <div class="empty-text">Alle Zutaten aus deinem Plan werden automatisch zusammengestellt.</div>
+      <button class="btn-gold" style="margin-top:8px;width:auto;padding:12px 28px" onclick="openShoppingFilter()">✨ Jetzt erstellen</button>
+    </div>
+    ${renderCustomItemsSection()}`;
+    return;
+  }
+  const customItems = state.customItems || [];
+  const shopOpen    = (state.shopping || []).filter(i => !i.checked);
+  const shopChecked = (state.shopping || []).filter(i =>  i.checked);
+  const customOpen    = customItems.filter(i => !i.checked);
+  const customChecked = customItems.filter(i =>  i.checked);
+  const open    = [...shopOpen, ...customOpen];
+  const checked = [...shopChecked, ...customChecked];
+  const total   = (state.shopping || []).length + customItems.length;
+  const done    = shopChecked.length + customChecked.length;
+  const pct     = total ? (done/total*100).toFixed(1) : 0;
+
+  let html = `
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <div style="font-size:22px;font-weight:700">Einkaufszettel</div>
+    <button class="btn-ghost" onclick="openShoppingFilter()">↺ Neu</button>
+  </div>
+  <div class="card" style="margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:8px">
+      <span>${done} von ${total} besorgt</span><span style="color:var(--gold);font-weight:600">${Math.round(pct)}%</span>
+    </div>
+    <div class="progress-track"><div class="progress-fill green" style="width:${pct}%"></div></div>
+  </div>`;
+
+  if (open.length) {
+    html += `<div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">NOCH BESORGEN</div>
+    <div class="card" style="padding:0;margin-bottom:14px">`;
+    shopOpen.forEach(item => { html += shopRow(item); });
+    customOpen.forEach(item => { html += customShopRow(item); });
+    html += `</div>`;
+  }
+
+  if (checked.length) {
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <span style="font-size:12px;font-weight:600;color:var(--muted)">ERLEDIGT ✓</span>
+      <button class="btn-danger" onclick="clearChecked()" style="font-size:12px">Löschen</button>
+    </div>
+    <div class="card section-faded" style="padding:0;margin-bottom:14px">`;
+    shopChecked.forEach(item => { html += shopRow(item); });
+    customChecked.forEach(item => { html += customShopRow(item); });
+    html += `</div>`;
+  }
+
+  // Eingabeformular für eigene Artikel
+  html += renderCustomItemsSection();
+
+  c.innerHTML = html;
+}
+
+function renderCustomItemsSection() {
+  // Only renders the input form; items are mixed into the main lists above
+  let html = `
+  <div style="margin-top:8px">
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="custom-item-name" placeholder="Artikel hinzufügen..." style="flex:1" onkeydown="if(event.key==='Enter'){addCustomItem();event.preventDefault()}">
+      <button onclick="addCustomItem()" style="background:var(--gold);border:none;border-radius:10px;color:#111;font-size:22px;font-weight:700;width:44px;height:44px;cursor:pointer;flex-shrink:0">+</button>
+    </div>
+  </div>`;
+  return html;
+}
+
+function addCustomItem() {
+  const nameEl = document.getElementById('custom-item-name');
+  if (!nameEl) return;
+  const name = nameEl.value.trim();
+  if (!name) return;
+  if (!state.customItems) state.customItems = [];
+  state.customItems.push({
+    id: crypto.randomUUID(),
+    name,
+    checked: false
+  });
+  nameEl.value = '';
+  save();
+  renderShopping();
+}
+
+function toggleCustomItem(id) {
+  const item = (state.customItems || []).find(i => i.id === id);
+  if (item) { item.checked = !item.checked; save(); renderShopping(); }
+}
+
+function deleteCustomItem(id) {
+  state.customItems = (state.customItems || []).filter(i => i.id !== id);
+  save();
+  renderShopping();
+}
+
+function shopRow(item) {
+  const dayLabel = item.days?.length === 1 ? `Tag ${item.days[0]}`
+    : item.days?.length > 1 ? `Tag ${item.days[0]}–${item.days[item.days.length-1]}`
+    : '';
+  const sharedBadge = item.isShared && item.personCount > 1
+    ? `<span style="font-size:11px;color:var(--muted);margin-left:6px">(${item.personCount} Pers.)</span>`
+    : '';
+  return `<div class="shop-row" onclick="toggleShopItem('${item.id}')">
+    <div class="check-circle ${item.checked?'done':''}">${item.checked?'✓':''}</div>
+    <div style="flex:1;min-width:0">
+      <div class="shop-name ${item.checked?'done':''}" style="display:flex;align-items:center;flex-wrap:wrap">${item.name}${sharedBadge}</div>
+      ${dayLabel ? `<div class="shop-days">📅 ${dayLabel}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+function customShopRow(item) {
+  return `<div class="shop-row" onclick="toggleCustomItem('${item.id}')">
+    <div class="check-circle ${item.checked?'done':''}">${item.checked?'✓':''}</div>
+    <div style="flex:1;min-width:0">
+      <div class="shop-name ${item.checked?'done':''}" style="display:flex;align-items:center;gap:6px">
+        <span>📝</span><span>${item.name}</span>
+      </div>
+    </div>
+    <button onclick="event.stopPropagation();deleteCustomItem('${item.id}')" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0 4px">×</button>
+  </div>`;
+}
+
+function toggleShopItem(id) {
+  const item = state.shopping.find(i => i.id === id);
+  if (item) { item.checked = !item.checked; save(); renderShopping(); }
+}
+
+function clearChecked() {
+  state.shopping = state.shopping.filter(i => !i.checked);
+  state.customItems = (state.customItems || []).filter(i => !i.checked);
+  save(); renderShopping();
+}
+
+function openShoppingFilter() {
+  const total = state.plan?.days.length || 0;
+  let html = `<p style="font-size:14px;color:var(--muted);margin-bottom:16px">Für wie viele Tage soll der Einkaufszettel erstellt werden?</p>
+  <div class="card" style="padding:0">`;
+  html += `<div class="shop-row" onclick="generateShopping(0)" style="font-size:15px">Alle ${total} Tage</div>`;
+  for (let d = 1; d <= total; d++) {
+    html += `<div class="shop-row" style="border-top:1px solid var(--divider);font-size:15px" onclick="generateShopping(${d})">Nächste ${d} ${d===1?'Tag':'Tage'}</div>`;
+  }
+  html += `</div>`;
+  document.getElementById('modal-shopping-filter-body').innerHTML = html;
+  openModal('modal-shopping-filter');
+}
+
+function generateShopping(days) {
+  const plan = state.plan;
+  if (!plan) return;
+  const relevantDays = days === 0 ? plan.days : plan.days.slice(0, days);
+  const personCount = state.household?.persons?.length || 1;
+  const map = {};
+  for (const day of relevantDays) {
+    for (const meal of day.meals) {
+      const isShared = state.household?.sharedMeals?.[meal.type] === true;
+      const factor = isShared ? personCount : 1;
+      for (const ing of (meal.ingredients || [])) {
+        const origKey = ing.trim();
+        if (!origKey) continue;
+        const scaled = scaleIngredient(origKey, factor);
+        if (!map[origKey]) map[origKey] = { scaledName: scaled, days: [], isShared, factor };
+        if (!map[origKey].days.includes(day.dayNumber)) map[origKey].days.push(day.dayNumber);
+      }
+    }
+  }
+  state.shopping = Object.entries(map).map(([, info]) => ({
+    id: crypto.randomUUID(),
+    name: info.scaledName,
+    checked: false,
+    days: info.days.sort((a,b)=>a-b),
+    isShared: info.isShared,
+    personCount: info.factor
+  })).sort((a,b) => a.name.localeCompare(b.name, 'de'));
+  save();
+  closeModal('modal-shopping-filter');
+  renderShopping();
+}
+</script>
+
+<script>
+// ═══════════════════════════════════════════════
+// FIXES VIEW (ÄNDERUNG 5: Neuer Tab)
+// ═══════════════════════════════════════════════
+function renderFixes() {
+  const c = document.getElementById('fixes-content');
+  const meals = state.fixedMeals || [];
+
+  let html = `
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    <div style="font-size:22px;font-weight:700">Feste Mahlzeiten</div>
+  </div>
+  <button class="btn-gold" onclick="openAddFixedMeal()" style="margin-bottom:18px">+ Neuen Eintrag hinzufügen</button>`;
+
+  if (!meals.length) {
+    html += `<div class="empty-state">
+      <div class="empty-icon">📌</div>
+      <div class="empty-title">Keine festen Mahlzeiten</div>
+      <div class="empty-text">Definiere Mahlzeiten oder Lebensmittel, die du täglich oder an bestimmten Tagen essen möchtest. Die KI baut sie in den Plan ein.</div>
+    </div>`;
+  } else {
+    for (const fm of meals) {
+      const meta = MEAL_META[fm.mealType] || MEAL_META.any;
+      const daysLabel = fm.days.includes('all') ? 'täglich'
+        : fm.days.map(d => ({mon:'Mo',tue:'Di',wed:'Mi',thu:'Do',fri:'Fr',sat:'Sa',sun:'So'}[d]||d)).join(', ');
+      html += `<div class="fixed-meal-card">
+        <button class="fixed-meal-del" onclick="deleteFixedMeal('${fm.id}')">×</button>
+        <div class="fixed-meal-header">
+          <span style="font-size:16px">${meta.icon}</span>
+          <span class="fixed-meal-type">${meta.label}</span>
+          <span class="fixed-meal-days">${daysLabel}</span>
+        </div>
+        <div class="fixed-meal-desc">${fm.recipeId ? '📖 ' : ''}${fm.description}</div>
+        ${fm.aiTip
+          ? `<div class="info-box"><span>💡 ${fm.aiTip}</span></div>`
+          : `<div style="font-size:12px;color:var(--muted);font-style:italic">Kein KI-Tipp vorhanden</div>`}
+      </div>`;
+    }
+
+    html += `<button class="btn-gold" onclick="fetchFixedMealTips()" style="margin-top:4px;background:var(--elevated);color:var(--gold)">
+      💡 KI-Tipps aktualisieren
+    </button>`;
+  }
+
+  c.innerHTML = html;
+}
+
+// Track current mode: null | 'library' | 'free'
+let _fixedMode = null;
+
+function openAddFixedMeal() {
+  _fixedDaysSelection = ['all'];
+  _fixedMode = null;
+  document.getElementById('fixed-desc').value = '';
+  document.getElementById('fixed-type').value = 'breakfast';
+  // Reset selection cards
+  document.getElementById('fixed-card-library').style.border = '2px solid var(--divider)';
+  document.getElementById('fixed-card-free').style.border = '2px solid var(--divider)';
+  // Hide mode content
+  document.getElementById('fixed-mode-content').style.display = 'none';
+  document.getElementById('fixed-desc-field').style.display = 'none';
+  document.getElementById('fixed-recipe-select-field').style.display = 'none';
+  // Populate recipe dropdown
+  const sel = document.getElementById('fixed-recipe-select');
+  if (sel) {
+    sel.innerHTML = '<option value="">Rezept auswählen...</option>';
+    (state.recipes || []).forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r.id;
+      opt.textContent = r.name;
+      sel.appendChild(opt);
+    });
+  }
+  // Reset toggle buttons
+  document.querySelectorAll('.day-toggle-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.day === 'all');
+  });
+  openModal('modal-add-fixed');
+}
+
+function selectFixedMode(mode) {
+  _fixedMode = mode;
+  // Update card borders
+  document.getElementById('fixed-card-library').style.border =
+    mode === 'library' ? '2px solid var(--gold)' : '2px solid var(--divider)';
+  document.getElementById('fixed-card-free').style.border =
+    mode === 'free' ? '2px solid var(--gold)' : '2px solid var(--divider)';
+  // Show content area
+  document.getElementById('fixed-mode-content').style.display = '';
+  document.getElementById('fixed-recipe-select-field').style.display = mode === 'library' ? '' : 'none';
+  document.getElementById('fixed-desc-field').style.display = mode === 'free' ? '' : 'none';
+}
+
+function toggleFixedRecipeMode() {
+  // Legacy – no longer used but kept for safety
+}
+
+function toggleFixedDay(day) {
+  if (day === 'all') {
+    _fixedDaysSelection = ['all'];
+  } else {
+    _fixedDaysSelection = _fixedDaysSelection.filter(d => d !== 'all');
+    if (_fixedDaysSelection.includes(day)) {
+      _fixedDaysSelection = _fixedDaysSelection.filter(d => d !== day);
+      if (!_fixedDaysSelection.length) _fixedDaysSelection = ['all'];
+    } else {
+      _fixedDaysSelection.push(day);
+    }
+  }
+  // Update button states
+  document.querySelectorAll('.day-toggle-btn').forEach(btn => {
+    btn.classList.toggle('active', _fixedDaysSelection.includes(btn.dataset.day));
+  });
+}
+
+function saveFixedMeal() {
+  if (!_fixedMode) { alert('Bitte zuerst eine Eingabeart auswählen (Bibliothek oder Freies Rezept).'); return; }
+  let desc = '';
+  let recipeId = null;
+
+  if (_fixedMode === 'library') {
+    const sel = document.getElementById('fixed-recipe-select');
+    recipeId = sel?.value || '';
+    if (!recipeId) { alert('Bitte ein Rezept auswählen.'); return; }
+    const recipe = state.recipes.find(r => r.id === recipeId);
+    desc = recipe ? recipe.name : '';
+  } else {
+    desc = document.getElementById('fixed-desc').value.trim();
+    if (!desc) { alert('Bitte Mahlzeit beschreiben.'); return; }
+  }
+
+  if (!state.fixedMeals) state.fixedMeals = [];
+  state.fixedMeals.push({
+    id: crypto.randomUUID(),
+    description: desc,
+    recipeId: recipeId || null,
+    mealType: document.getElementById('fixed-type').value,
+    days: [..._fixedDaysSelection],
+    aiTip: ''
+  });
+  save();
+  closeModal('modal-add-fixed');
+  renderFixes();
+}
+
+function deleteFixedMeal(id) {
+  state.fixedMeals = (state.fixedMeals || []).filter(fm => fm.id !== id);
+  save();
+  renderFixes();
+}
+
+async function fetchFixedMealTips() {
+  const meals = state.fixedMeals || [];
+  if (!meals.length) return;
+  const token = state.settings.token.trim();
+  if (!token) { alert('Bitte zuerst einen Hugging Face Token in den Einstellungen hinterlegen.'); return; }
+
+  // Show loading state
+  const btn = document.querySelector('#fixes-content .btn-gold:last-child');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner" style="display:inline-block"></div> Wird geladen…'; }
+
+  const mealsList = meals.map(fm => ({ id: fm.id, description: fm.description }));
+
+  try {
+    const resp = await fetch('/api/hf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        _token: token,
+        model: state.settings.hfModel,
+        messages: [
+          { role: 'system', content: 'Du bist Ernaehrungsberater. Gib fuer jede beschriebene Mahlzeit einen kurzen Optimierungstipp auf Deutsch (max. 1 Satz). Antworte nur mit validem JSON ohne Markdown.' },
+          { role: 'user', content: `Gib fuer jede Mahlzeit einen kurzen Tipp. Antworte NUR mit JSON-Array: [{"id":"...","tip":"..."}]\n${JSON.stringify(mealsList)}` }
+        ],
+        max_tokens: 800,
+        temperature: 0.5,
+        stream: false
+      })
+    });
+
+    if (!resp.ok) throw new Error(`API-Fehler ${resp.status}`);
+    const data = await resp.json();
+    const content = data.choices?.[0]?.message?.content || '[]';
+    const jsonStr = extractJSON(content);
+    const tips = JSON.parse(jsonStr);
+
+    if (Array.isArray(tips)) {
+      for (const t of tips) {
+        const fm = state.fixedMeals.find(m => m.id === t.id);
+        if (fm && t.tip) fm.aiTip = t.tip;
+      }
+      save();
+    }
+  } catch(e) {
+    alert('Fehler beim Laden der Tipps: ' + e.message);
+  }
+
+  renderFixes();
+}
+</script>
+
+<script>
+// ═══════════════════════════════════════════════
+// SETTINGS VIEW
+// ═══════════════════════════════════════════════
+function renderSettings() {
+  const s = state.settings;
+  const tokenVisible = window._tokenVisible || false;
+  let html = `
+  <!-- Haushalt -->
+  <div class="card">
+    <div class="card-title">🏠 Haushalt</div>
+    <div class="field-row">
+      <span>Anzahl Personen</span>
+      <div class="stepper">
+        <button class="stepper-btn" onclick="changePersonCount(-1)">−</button>
+        <span class="stepper-val">${state.household.persons.length}</span>
+        <button class="stepper-btn" onclick="changePersonCount(1)">+</button>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div style="font-size:12px;font-weight:600;color:var(--muted);margin:10px 0 8px">PERSONEN</div>
+    ${state.household.persons.map((p,i) => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--divider)">
+      <div>
+        <span style="font-size:14px;font-weight:500">${p.name}</span>
+        ${p.isMain ? '<span style="font-size:11px;color:var(--muted);margin-left:6px">(Hauptperson)</span>' : ''}
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">${p.diet}${p.avoided&&p.avoided.length?' · '+p.avoided.slice(0,2).join(', ')+(p.avoided.length>2?'...':''):''}</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn-ghost" onclick="openPersonModal(${i})" style="font-size:18px;padding:4px">✏️</button>
+        ${!p.isMain ? `<button class="btn-danger" onclick="deletePerson(${i})" style="font-size:18px;padding:4px">🗑️</button>` : ''}
+      </div>
+    </div>`).join('')}
+    <button class="btn-ghost" onclick="changePersonCount(1)" style="margin-top:10px;font-size:14px">+ Person hinzufügen</button>
+    <div class="divider" style="margin:12px 0"></div>
+    <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:10px">GEMEINSAME MAHLZEITEN</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      ${[['breakfast','🌅 Frühstück'],['lunch','☀️ Mittag'],['dinner','🌙 Abendessen'],['snack','🍃 Snack']].map(([key,label]) => `
+      <button onclick="toggleSharedMeal('${key}')" style="padding:8px 14px;border-radius:20px;border:1px solid ${state.household.sharedMeals[key]?'var(--gold)':'var(--divider)'};background:${state.household.sharedMeals[key]?'rgba(201,171,110,.15)':'none'};color:${state.household.sharedMeals[key]?'var(--gold)':'var(--muted)'};font-size:13px;cursor:pointer">${label}</button>`).join('')}
+    </div>
+  </div>
+
+  <!-- Ernaehrungsziele -->
+  <div class="card">
+    <div class="card-title">Ernährungsziele – Ich</div>
+    <div class="field-row">
+      <span>🔥 Kalorien / Tag</span>
+      <span style="color:var(--gold);font-weight:600">${s.calories} kcal</span>
+    </div>
+    <!-- ÄNDERUNG 4: max auf 2000, Standardwert 1350 -->
+    <input type="range" min="1200" max="2000" step="50" value="${s.calories}" oninput="updateCal(this.value)" style="width:100%;margin-bottom:14px">
+    <div class="divider"></div>
+    <div class="field-row">
+      <span>🍴 Mahlzeiten / Tag</span>
+      <div class="seg" style="width:130px">
+        <button class="seg-btn ${s.mealsPerDay===2?'active':''}" onclick="setSetting('mealsPerDay',2)">2</button>
+        <button class="seg-btn ${s.mealsPerDay===3?'active':''}" onclick="setSetting('mealsPerDay',3)">3</button>
+        <button class="seg-btn ${s.mealsPerDay===4?'active':''}" onclick="setSetting('mealsPerDay',4)">4</button>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="field-row">
+      <span>🌿 Ernährungsweise</span>
+      <select onchange="setSetting('diet',this.value)" style="width:auto;padding:6px 10px">
+        ${['Alles','Vegetarisch','Vegan','Pescetarisch'].map(d=>`<option ${s.diet===d?'selected':''}>${d}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+
+  <!-- Hauptmahlzeit -->
+  <div class="card">
+    <div class="card-title">Wann esse ich am meisten?</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Die Mahlzeit mit den meisten Kalorien</p>
+    <div class="seg">
+      <button class="seg-btn ${s.mainMeal==='morning'?'active':''}" onclick="setSetting('mainMeal','morning')">🌅 Frühstück</button>
+      <button class="seg-btn ${s.mainMeal==='midday'||!s.mainMeal?'active':''}" onclick="setSetting('mainMeal','midday')">☀️ Mittag</button>
+      <button class="seg-btn ${s.mainMeal==='evening'?'active':''}" onclick="setSetting('mainMeal','evening')">🌙 Abendessen</button>
+    </div>
+  </div>
+
+  <!-- KI-Modell -->
+  <div class="card">
+    <div class="card-title">KI-Modell (Hugging Face)</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Alle Modelle sind über den kostenlosen Free-Tier verfügbar.</p>
+    ${MODELS.map(m => `
+    <div class="model-radio ${s.hfModel===m.id?'selected':''}" onclick="setSetting('hfModel','${m.id}')">
+      <div class="radio-circle"><div class="radio-dot"></div></div>
+      <div>
+        <div style="font-size:14px">${m.name}</div>
+        <div class="model-id">${m.id}</div>
+      </div>
+    </div>`).join('')}
+  </div>
+
+  <!-- HF Token -->
+  <div class="card">
+    <div class="card-title">Hugging Face Token</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:10px">
+      Kostenlos auf <strong style="color:var(--gold)">huggingface.co</strong> → Settings → Access Tokens → Read Token erstellen.
+    </p>
+    <div class="token-row">
+      <input type="${tokenVisible?'text':'password'}" id="token-input" placeholder="hf_..." value="${s.token}" oninput="setSetting('token',this.value)" autocapitalize="none" autocorrect="off">
+      <button class="eye-btn" onclick="toggleTokenVis()">${tokenVisible?'🙈':'👁'}</button>
+    </div>
+    ${s.token ? `<div class="badge green" style="margin-top:8px;display:inline-flex">✓ Token gespeichert</div>` : ''}
+  </div>
+
+  <!-- PWA Install Hint -->
+  <div class="card" style="border:1px solid rgba(201,171,110,.2)">
+    <div style="display:flex;gap:12px;align-items:flex-start">
+      <div style="font-size:24px">📱</div>
+      <div>
+        <div style="font-size:14px;font-weight:600;margin-bottom:4px">Als App installieren</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.6">
+          In Safari auf dem iPhone: Teilen-Symbol tippen → <strong style="color:var(--text)">„Zum Home-Bildschirm"</strong> → Hinzufügen. Die App ist dann wie eine native App nutzbar.
+        </div>
+      </div>
+    </div>
+  </div>
+  `;
+  document.getElementById('settings-content').innerHTML = html;
+}
+
+function updateCal(val) {
+  state.settings.calories = parseInt(val);
+  const rows = document.querySelectorAll('.field-row span');
+  rows.forEach(s => { if (s.textContent.includes('kcal')) s.textContent = `${val} kcal`; });
+  save();
+}
+
+function setSetting(key, val) {
+  state.settings[key] = val;
+  save();
+  renderSettings();
+}
+
+function toggleTokenVis() {
+  window._tokenVisible = !window._tokenVisible;
+  renderSettings();
+  setTimeout(() => document.getElementById('token-input')?.focus(), 50);
+}
+
+function addTag(type) {
+  const input = document.getElementById(type + '-input');
+  const val = input.value.trim();
+  if (!val) return;
+  if (!state.settings[type]) state.settings[type] = [];
+  if (!state.settings[type].includes(val)) {
+    state.settings[type].push(val);
+    save();
+    renderSettings();
+  } else {
+    input.value = '';
+  }
+}
+
+function removeTag(type, val) {
+  state.settings[type] = (state.settings[type] || []).filter(t => t !== val);
+  save();
+  renderSettings();
+}
+
+// ═══════════════════════════════════════════════
+// HOUSEHOLD MANAGEMENT
+// ═══════════════════════════════════════════════
+function changePersonCount(delta) {
+  const h = state.household;
+  const newCount = Math.max(1, Math.min(6, h.persons.length + delta));
+  if (newCount > h.persons.length) {
+    h.persons.push({
+      id: crypto.randomUUID(),
+      name: 'Person ' + newCount,
+      isMain: false,
+      diet: 'Alles',
+      disliked: [],
+      avoided: [],
+      restrictionBreakfast: '',
+      restrictionLunch: '',
+      restrictionDinner: '',
+      restrictionSnack: ''
+    });
+  } else if (newCount < h.persons.length) {
+    const idx = h.persons.map((_,i)=>i).filter(i=>!h.persons[i].isMain).pop();
+    if (idx !== undefined) h.persons.splice(idx, 1);
+  }
+  save();
+  renderSettings();
+}
+
+function deletePerson(idx) {
+  const p = state.household.persons[idx];
+  if (!p || p.isMain) return;
+  if (!confirm('Person "' + p.name + '" wirklich löschen?')) return;
+  state.household.persons.splice(idx, 1);
+  save();
+  renderSettings();
+}
+
+function toggleSharedMeal(key) {
+  state.household.sharedMeals[key] = !state.household.sharedMeals[key];
+  save();
+  renderSettings();
+}
+
+function openPersonModal(idx) {
+  const p = state.household.persons[idx];
+  if (!p) return;
+  window._editPersonIdx = idx;
+  const body = document.getElementById('modal-person-body');
+  body.innerHTML = `
+    <div class="field">
+      <label>Name</label>
+      <input id="person-name-input" value="${p.name}" ${p.isMain ? 'readonly style="opacity:.6"' : ''} placeholder="Name">
+    </div>
+    <div class="field">
+      <label>Ernährungsweise</label>
+      <select id="person-diet-input">
+        ${['Alles','Vegetarisch','Vegan','Pescetarisch'].map(d=>`<option ${p.diet===d?'selected':''}>${d}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Unbeliebte Lebensmittel</label>
+      <div class="tag-input-row">
+        <input id="person-disliked-input" placeholder="z.B. Rosenkohl" onkeydown="if(event.key==='Enter'){addPersonTag('disliked');event.preventDefault()}">
+        <button class="tag-add" onclick="addPersonTag('disliked')">＋</button>
+      </div>
+      <div class="tags" id="person-disliked-tags">${(p.disliked||[]).map(t=>`<span class="tag bronze">${t}<button class="tag-x" onclick="removePersonTag('disliked','${t}')">✕</button></span>`).join('')}</div>
+    </div>
+    <div class="field">
+      <label>Allergien / Vermeidungen</label>
+      <div class="tag-input-row">
+        <input id="person-avoided-input" placeholder="z.B. Gluten" onkeydown="if(event.key==='Enter'){addPersonTag('avoided');event.preventDefault()}">
+        <button class="tag-add" onclick="addPersonTag('avoided')">＋</button>
+      </div>
+      <div class="tags" id="person-avoided-tags">${(p.avoided||[]).map(t=>`<span class="tag red">${t}<button class="tag-x" onclick="removePersonTag('avoided','${t}')">✕</button></span>`).join('')}</div>
+    </div>
+    <div style="font-size:12px;font-weight:600;color:var(--muted);margin:12px 0 8px">EINSCHRÄNKUNGEN PRO MAHLZEIT</div>
+    <div class="field"><label>🌅 Frühstück</label><input id="person-rb-input" placeholder="Keine" value="${p.restrictionBreakfast||''}"></div>
+    <div class="field"><label>☀️ Mittagessen</label><input id="person-rl-input" placeholder="Keine" value="${p.restrictionLunch||''}"></div>
+    <div class="field"><label>🌙 Abendessen</label><input id="person-rd-input" placeholder="Keine" value="${p.restrictionDinner||''}"></div>
+    <div class="field" style="margin-bottom:0"><label>🍃 Snack</label><input id="person-rs-input" placeholder="Keine" value="${p.restrictionSnack||''}"></div>
+    <button class="btn-gold" onclick="savePersonModal()" style="margin-top:16px">Speichern</button>
+  `;
+  openModal('modal-person');
+}
+
+function addPersonTag(type) {
+  const input = document.getElementById('person-' + type + '-input');
+  const val = input ? input.value.trim() : '';
+  if (!val) return;
+  const idx = window._editPersonIdx;
+  const p = state.household.persons[idx];
+  if (!p) return;
+  if (!p[type]) p[type] = [];
+  if (!p[type].includes(val)) {
+    p[type].push(val);
+    if (p.isMain) state.settings[type] = p[type];
+    const tagsEl = document.getElementById('person-' + type + '-tags');
+    if (tagsEl) tagsEl.innerHTML = p[type].map(t=>`<span class="tag ${type==='disliked'?'bronze':'red'}">${t}<button class="tag-x" onclick="removePersonTag('${type}','${t}')">✕</button></span>`).join('');
+  }
+  input.value = '';
+}
+
+function removePersonTag(type, val) {
+  const idx = window._editPersonIdx;
+  const p = state.household.persons[idx];
+  if (!p) return;
+  p[type] = (p[type] || []).filter(t => t !== val);
+  if (p.isMain) state.settings[type] = p[type];
+  const tagsEl = document.getElementById('person-' + type + '-tags');
+  if (tagsEl) tagsEl.innerHTML = p[type].map(t=>`<span class="tag ${type==='disliked'?'bronze':'red'}">${t}<button class="tag-x" onclick="removePersonTag('${type}','${t}')">✕</button></span>`).join('');
+}
+
+function savePersonModal() {
+  const idx = window._editPersonIdx;
+  const p = state.household.persons[idx];
+  if (!p) return;
+  if (!p.isMain) {
+    const nameEl = document.getElementById('person-name-input');
+    if (nameEl) p.name = nameEl.value.trim() || p.name;
+  }
+  const dietEl = document.getElementById('person-diet-input');
+  if (dietEl) p.diet = dietEl.value;
+  p.restrictionBreakfast = document.getElementById('person-rb-input')?.value.trim() || '';
+  p.restrictionLunch = document.getElementById('person-rl-input')?.value.trim() || '';
+  p.restrictionDinner = document.getElementById('person-rd-input')?.value.trim() || '';
+  p.restrictionSnack = document.getElementById('person-rs-input')?.value.trim() || '';
+  if (p.isMain) {
+    state.settings.diet = p.diet;
+    state.settings.restrictionBreakfast = p.restrictionBreakfast;
+    state.settings.restrictionLunch = p.restrictionLunch;
+    state.settings.restrictionDinner = p.restrictionDinner;
+    state.settings.restrictionSnack = p.restrictionSnack;
+    state.settings.disliked = p.disliked || [];
+    state.settings.avoided = p.avoided || [];
+  }
+  save();
+  closeModal('modal-person');
+  renderSettings();
+}
+
+// ═══════════════════════════════════════════════
+// HUGGING FACE API
+// ═══════════════════════════════════════════════
+async function generatePlan() {
+  if (isGenerating) return;
+  const token = state.settings.token.trim();
+  if (!token) { alert('Bitte zuerst einen Hugging Face Token in den Einstellungen hinterlegen.'); return; }
+
+  isGenerating = true;
+  renderPlan();
+
+  const season = currentSeason();
+  const avoided  = state.settings.avoided?.length  ? state.settings.avoided.join(', ')  : 'keine';
+  const disliked = state.settings.disliked?.length ? state.settings.disliked.join(', ') : 'keine';
+  const mealNames = { 2:'Fruehstueck, Abendessen', 3:'Fruehstueck, Mittagessen, Abendessen', 4:'Fruehstueck, Mittagessen, Abendessen, Snack' }[state.settings.mealsPerDay] || '';
+  const recipeList = state.recipes.length
+    ? state.recipes.map(r => `- ID:${r.id} | ${r.name} (${(MEAL_META[r.category]||MEAL_META.any).label}, ${Math.round(r.calories/(r.servings||1))} kcal) | ${(r.ingredients||[]).slice(0,4).join(', ')}`).join('\n')
+    : 'Keine.';
+
+  // ÄNDERUNG 1: Mahlzeiten-Gedächtnis aufbauen
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 14);
+  state.mealHistory = (state.mealHistory || []).filter(entry => new Date(entry.date) > cutoff);
+  const historyList = (state.mealHistory || [])
+    .flatMap(entry => entry.meals || [])
+    .slice(-50)
+    .join(', ') || 'keine';
+
+  // ÄNDERUNG 5: Feste Mahlzeiten in den Prompt einbauen
+  const fixedMealsList = (state.fixedMeals || []).length
+    ? (state.fixedMeals || []).map(fm => {
+        const daysLabel = fm.days.includes('all') ? 'täglich'
+          : fm.days.map(d => ({mon:'Mo',tue:'Di',wed:'Mi',thu:'Do',fri:'Fr',sat:'Sa',sun:'So'}[d]||d)).join(', ');
+        let detail = fm.description;
+        if (fm.recipeId) {
+          

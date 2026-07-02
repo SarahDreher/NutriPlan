@@ -1,0 +1,19 @@
+NutriPlan – iPhone Installation
+================================
+
+Voraussetzung: iPhone und Computer im selben WLAN
+
+Schritt 1: start.bat doppelklicken (Server starten)
+           → Im schwarzen Fenster erscheint der iPhone-Link
+             z.B.: http://192.168.1.42:8080
+
+Schritt 2: Diesen Link im iPhone-Safari öffnen
+
+Schritt 3: Teilen-Symbol tippen (Quadrat mit Pfeil nach oben)
+           → "Zum Home-Bildschirm" tippen
+           → "Hinzufügen" tippen
+
+Fertig! NutriPlan erscheint als App-Icon auf dem Home-Bildschirm.
+Die App läuft im Vollbild ohne Safari-Leiste – wie eine native App.
+
+Hinweis: Der Server (start.bat) muss laufen wenn du die App nutzt.
