@@ -1061,87 +1061,88 @@ function parseVisionResponse(text) {
   return JSON.parse(match[0]);
 }
 
-function showScanStatus(msg) {
+function showScanStatus(msg, isError) {
   const el = document.getElementById('recipe-scan-status');
-  if (el) { el.style.display = ''; el.textContent = msg; }
+  if (!el) return;
+  el.style.display = '';
+  el.textContent = msg;
+  el.style.color = isError ? 'var(--bronze)' : msg.startsWith('✅') ? 'var(--green)' : 'var(--muted)';
 }
 
-async function scanRecipePhoto(file) {
-  const token = state.settings.token.trim();
+// Gemeinsame Funktion: befüllt alle Rezeptfelder aus geparsten Daten
+function fillRecipeFields(parsed) {
+  if (parsed.name)  document.getElementById('r-name').value = parsed.name;
+  if (parsed.ingredients?.length)
+    document.getElementById('r-ingredients').value = parsed.ingredients.join('\n');
+  if (parsed.steps?.length)
+    document.getElementById('r-instructions').value = parsed.steps.join('\n');
+  if (parsed.calories && !isNaN(parsed.calories)) {
+    const cal = Math.max(50, Math.min(3000, Math.round(+parsed.calories / 50) * 50));
+    _recipeForm.calories = cal;
+    document.getElementById('r-cal-val').textContent = cal;
+  }
+  if (parsed.duration && !isNaN(parsed.duration)) {
+    const dur = Math.max(5, Math.min(300, Math.round(+parsed.duration / 5) * 5));
+    _recipeForm.prep = dur;
+    document.getElementById('r-prep-val').textContent = dur;
+  }
+  if (parsed.servings && !isNaN(parsed.servings)) {
+    const srv = Math.max(1, Math.min(10, Math.round(+parsed.servings)));
+    _recipeForm.servings = srv;
+    document.getElementById('r-srv-val').textContent = srv;
+  }
+}
+
+// Gemeinsame KI-Parse-Funktion für Text (PDF) und Bild (Foto)
+async function parseWithAI(messagesPayload, fallbackFn, modelOverride) {
+  const token = state.settings.token?.trim();
   if (!token) {
-    alert('Bitte zuerst HuggingFace-Token in den Einstellungen eingeben.');
+    showScanStatus('⚠️ Kein Token – bitte in Einstellungen eingeben', true);
+    if (fallbackFn) fallbackFn();
     return;
   }
-
-  // Show the upload box area and status
-  renderRecipePhotoPreview();
-  const uploadBox = document.querySelector('#recipe-photo-preview .photo-upload-box');
-  if (uploadBox) uploadBox.style.opacity = '0.5';
-  showScanStatus('🔍 Rezept wird erkannt…');
-
+  showScanStatus('🔍 KI erkennt Rezept…');
   try {
-    // Resize image for vision API (max 1024px, JPEG 0.85)
-    const base64 = await new Promise((resolve, reject) => {
-      resizeImageToBase64(file, 1024, 0.85, resolve);
-    });
-
-    // Strip the data URL prefix to get pure base64, then reconstruct full data URL
-    const imageUrl = base64; // resizeImageToBase64 already returns data:image/jpeg;base64,...
-
     const resp = await hfFetch({
       _token: token,
-      model: 'meta-llama/Llama-3.2-11B-Vision-Instruct',
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image_url', image_url: { url: imageUrl } },
-          { type: 'text', text: 'Du bist ein Kochbuch-Scanner. Analysiere dieses Rezeptfoto und extrahiere alle Informationen.\n\nAntworte NUR mit diesem JSON (kein Text davor oder danach):\n{\n  "name": "Rezeptname",\n  "ingredients": ["200g Mehl", "3 Eier"],\n  "steps": ["Schritt 1: ...", "Schritt 2: ..."],\n  "calories": 450,\n  "duration": 30\n}\n\nRegeln:\n- ingredients: jede Zutat als eigener String mit Menge\n- steps: klare, nummerierte Schritte\n- calories: geschätzte kcal pro Portion (oder null wenn unbekannt)\n- duration: geschätzte Zubereitungszeit in Minuten (oder null)\n- Antworte auf Deutsch' }
-        ]
-      }],
+      model: modelOverride || state.settings.hfModel,
+      messages: messagesPayload,
       max_tokens: 2000,
-      temperature: 0.3,
+      temperature: 0.2,
       stream: false
     });
-
     if (!resp.ok) {
-      const body = await resp.text();
-      throw new Error('API-Fehler ' + resp.status + ': ' + body.slice(0, 200));
+      const errText = await resp.text().catch(() => '');
+      throw new Error(`Status ${resp.status}: ${errText.slice(0,100)}`);
     }
-
     const data = await resp.json();
     const content = data.choices?.[0]?.message?.content || '';
     const parsed = parseVisionResponse(content);
-
-    // Store photo as recipe image
-    window._recipePhotoData = base64;
-    renderRecipePhotoPreview();
-
-    // Fill form fields
-    if (parsed.name) document.getElementById('r-name').value = parsed.name;
-    if (parsed.ingredients && parsed.ingredients.length) {
-      document.getElementById('r-ingredients').value = parsed.ingredients.join('\n');
-    }
-    if (parsed.steps && parsed.steps.length) {
-      document.getElementById('r-instructions').value = parsed.steps.join('\n');
-    }
-    if (parsed.calories && !isNaN(parsed.calories)) {
-      const cal = Math.max(50, Math.min(3000, Math.round(parsed.calories / 50) * 50));
-      _recipeForm.calories = cal;
-      const calEl = document.getElementById('r-cal-val');
-      if (calEl) calEl.textContent = cal;
-    }
-    if (parsed.duration && !isNaN(parsed.duration)) {
-      const dur = Math.max(5, Math.min(300, Math.round(parsed.duration / 5) * 5));
-      _recipeForm.prep = dur;
-      const prepEl = document.getElementById('r-prep-val');
-      if (prepEl) prepEl.textContent = dur;
-    }
-
+    fillRecipeFields(parsed);
     showScanStatus('✅ Rezept erkannt – bitte prüfen');
   } catch(e) {
-    showScanStatus('❌ Erkennung fehlgeschlagen – Felder manuell ausfüllen');
-    console.error('Vision scan error:', e);
+    console.error('KI-Parse Fehler:', e);
+    showScanStatus('❌ KI-Erkennung fehlgeschlagen: ' + e.message.slice(0,60), true);
+    if (fallbackFn) fallbackFn();
   }
+}
+
+async function scanRecipePhoto(file) {
+  renderRecipePhotoPreview();
+  // Bild komprimieren und als Rezeptfoto speichern
+  const base64 = await new Promise(resolve => resizeImageToBase64(file, 1024, 0.85, resolve));
+  window._recipePhotoData = base64;
+  renderRecipePhotoPreview();
+
+  const prompt = 'Du bist ein Kochbuch-Scanner. Analysiere dieses Rezeptfoto und extrahiere alle Informationen.\n\nAntworte NUR mit diesem JSON (kein Text davor oder danach):\n{\n  "name": "Rezeptname",\n  "ingredients": ["200g Mehl", "3 Eier"],\n  "steps": ["Schritt 1: ...", "Schritt 2: ..."],\n  "calories": 450,\n  "duration": 30,\n  "servings": 2\n}\n\nRegeln:\n- ingredients: jede Zutat als eigener String mit Menge\n- steps: klare Zubereitungsschritte\n- calories: geschätzte kcal pro Portion\n- duration: Gesamtzeit in Minuten\n- servings: Portionen\n- Antworte auf Deutsch';
+
+  await parseWithAI([{
+    role: 'user',
+    content: [
+      { type: 'image_url', image_url: { url: base64 } },
+      { type: 'text', text: prompt }
+    ]
+  }], null, 'meta-llama/Llama-3.2-11B-Vision-Instruct');
 }
 
 function resizeImageToBase64(file, maxSize, quality, callback) {
@@ -1281,11 +1282,6 @@ async function importRecipePDF(file) {
 }
 
 async function processPdfText(rawText) {
-  const token = state.settings.token?.trim();
-  if (!token) { alert('Bitte zuerst HuggingFace-Token in den Einstellungen eingeben.'); return; }
-
-  showScanStatus('🔍 Rezept wird aus PDF erkannt…');
-
   const prompt = `Du bist ein Rezept-Parser. Analysiere diesen Rezepttext und extrahiere alle Informationen.
 
 Antworte NUR mit diesem JSON (kein Text davor oder danach):
@@ -1299,9 +1295,9 @@ Antworte NUR mit diesem JSON (kein Text davor oder danach):
 }
 
 Regeln:
-- ingredients: jede Zutat als eigener String mit Menge (z.B. "100g Champignons, in Scheiben")
-- steps: klare Zubereitungsschritte als einzelne Strings
-- calories: geschätzte kcal pro Portion (falls nicht angegeben, schätze anhand der Zutaten)
+- ingredients: jede Zutat als eigener String mit Menge
+- steps: klare Zubereitungsschritte
+- calories: geschätzte kcal pro Portion
 - duration: Gesamtzeit in Minuten
 - servings: Anzahl Portionen
 - Antworte auf Deutsch
@@ -1309,58 +1305,10 @@ Regeln:
 Rezepttext:
 ${rawText}`;
 
-  try {
-    const resp = await hfFetch({
-      _token: token,
-      model: state.settings.hfModel,
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 2000,
-      temperature: 0.2,
-      stream: false
-    });
-
-    if (!resp.ok) throw new Error(`Status ${resp.status}`);
-    const data = await resp.json();
-    const content = data.choices?.[0]?.message?.content || '';
-    const parsed = parseVisionResponse(content);
-
-    // Name befüllen
-    if (parsed.name) document.getElementById('r-name').value = parsed.name;
-    // Zutaten
-    if (parsed.ingredients && parsed.ingredients.length) {
-      document.getElementById('r-ingredients').value = parsed.ingredients.join('\n');
-    }
-    // Zubereitung
-    if (parsed.steps && parsed.steps.length) {
-      document.getElementById('r-instructions').value = parsed.steps.join('\n');
-    }
-    // Kalorien (Stepper)
-    if (parsed.calories && !isNaN(parsed.calories)) {
-      const cal = Math.max(50, Math.min(3000, Math.round(parsed.calories / 50) * 50));
-      _recipeForm.calories = cal;
-      const calEl = document.getElementById('r-cal-val');
-      if (calEl) calEl.textContent = cal;
-    }
-    // Zubereitungszeit (Stepper)
-    if (parsed.duration && !isNaN(parsed.duration)) {
-      const dur = Math.max(5, Math.min(300, Math.round(parsed.duration / 5) * 5));
-      _recipeForm.prep = dur;
-      const prepEl = document.getElementById('r-prep-val');
-      if (prepEl) prepEl.textContent = dur;
-    }
-    // Portionen (Stepper)
-    if (parsed.servings && !isNaN(parsed.servings)) {
-      const srv = Math.max(1, Math.min(10, Math.round(parsed.servings)));
-      _recipeForm.servings = srv;
-      const srvEl = document.getElementById('r-srv-val');
-      if (srvEl) srvEl.textContent = srv;
-    }
-
-    showScanStatus('✅ Rezept erkannt – bitte prüfen');
-  } catch (e) {
-    console.error('PDF-Parse Fehler:', e);
-    showScanStatus('❌ Erkennung fehlgeschlagen – Felder manuell ausfüllen');
-  }
+  await parseWithAI([{ role: 'user', content: prompt }],
+    // Fallback: Rohttext wenigstens in Zubereitung eintragen
+    () => { document.getElementById('r-instructions').value = rawText.slice(0, 2000); }
+  );
 }
 
 async function handlePDFImport(file) {
