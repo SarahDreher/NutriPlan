@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <link rel="manifest" href="/manifest.json">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="NutriPlan">
@@ -173,7 +173,7 @@ input[type=range]::-webkit-slider-thumb {
 .modal-overlay.open { opacity: 1; pointer-events: all; }
 .modal {
   background: var(--bg); width: 100%; border-radius: 20px 20px 0 0;
-  max-height: calc(92vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; display: flex; flex-direction: column;
+  max-height: 92vh; display: flex; flex-direction: column;
   transform: translateY(40px); transition: transform .25s ease;
   padding-bottom: env(safe-area-inset-bottom);
 }
@@ -1280,100 +1280,25 @@ async function importRecipePDF(file) {
   return text;
 }
 
-async function processPdfText(rawText) {
-  const token = state.settings.token?.trim();
-  if (!token) { alert('Bitte zuerst HuggingFace-Token in den Einstellungen eingeben.'); return; }
-
-  showScanStatus('🔍 Rezept wird aus PDF erkannt…');
-
-  const prompt = `Du bist ein Rezept-Parser. Analysiere diesen Rezepttext und extrahiere alle Informationen.
-
-Antworte NUR mit diesem JSON (kein Text davor oder danach):
-{
-  "name": "Rezeptname",
-  "ingredients": ["200g Mehl", "3 Eier"],
-  "steps": ["Schritt 1: ...", "Schritt 2: ..."],
-  "calories": 450,
-  "duration": 30,
-  "servings": 2
-}
-
-Regeln:
-- ingredients: jede Zutat als eigener String mit Menge (z.B. "100g Champignons, in Scheiben")
-- steps: klare Zubereitungsschritte als einzelne Strings
-- calories: geschätzte kcal pro Portion (falls nicht angegeben, schätze anhand der Zutaten)
-- duration: Gesamtzeit in Minuten
-- servings: Anzahl Portionen
-- Antworte auf Deutsch
-
-Rezepttext:
-${rawText}`;
-
-  try {
-    const resp = await hfFetch({
-      _token: token,
-      model: state.settings.hfModel,
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 2000,
-      temperature: 0.2,
-      stream: false
-    });
-
-    if (!resp.ok) throw new Error(`Status ${resp.status}`);
-    const data = await resp.json();
-    const content = data.choices?.[0]?.message?.content || '';
-    const parsed = parseVisionResponse(content);
-
-    // Name befüllen
-    if (parsed.name) document.getElementById('r-name').value = parsed.name;
-    // Zutaten
-    if (parsed.ingredients && parsed.ingredients.length) {
-      document.getElementById('r-ingredients').value = parsed.ingredients.join('\n');
-    }
-    // Zubereitung
-    if (parsed.steps && parsed.steps.length) {
-      document.getElementById('r-instructions').value = parsed.steps.join('\n');
-    }
-    // Kalorien (Stepper)
-    if (parsed.calories && !isNaN(parsed.calories)) {
-      const cal = Math.max(50, Math.min(3000, Math.round(parsed.calories / 50) * 50));
-      _recipeForm.calories = cal;
-      const calEl = document.getElementById('r-cal-val');
-      if (calEl) calEl.textContent = cal;
-    }
-    // Zubereitungszeit (Stepper)
-    if (parsed.duration && !isNaN(parsed.duration)) {
-      const dur = Math.max(5, Math.min(300, Math.round(parsed.duration / 5) * 5));
-      _recipeForm.prep = dur;
-      const prepEl = document.getElementById('r-prep-val');
-      if (prepEl) prepEl.textContent = dur;
-    }
-    // Portionen (Stepper)
-    if (parsed.servings && !isNaN(parsed.servings)) {
-      const srv = Math.max(1, Math.min(10, Math.round(parsed.servings)));
-      _recipeForm.servings = srv;
-      const srvEl = document.getElementById('r-srv-val');
-      if (srvEl) srvEl.textContent = srv;
-    }
-
-    showScanStatus('✅ Rezept erkannt – bitte prüfen');
-  } catch (e) {
-    console.error('PDF-Parse Fehler:', e);
-    showScanStatus('❌ Erkennung fehlgeschlagen – Felder manuell ausfüllen');
-  }
-}
-
 async function handlePDFImport(file) {
   try {
     const text = await importRecipePDF(file);
-    const rawText = text.slice(0, 4000);
+    const truncated = text.slice(0, 2000);
     const fileName = file.name.replace(/\.pdf$/i, '');
-    // Open modal, set filename as fallback, then run AI parse
+    // Open modal and prefill
     openAddRecipe();
-    setTimeout(async () => {
+    setTimeout(() => {
       document.getElementById('r-name').value = fileName;
-      // Show scan status area (renderRecipePhotoPreview creates it)
-      await processPdfText(rawText);
+      document.getElementById('r-instructions').value = truncated;
+      // Show hint
+      const hint = document.createElement('div');
+      hint.id = 'pdf-import-hint';
+      hint.style.cssText = 'font-size:12px;color:var(--green);margin-top:8px;text-align:center';
+      hint.textContent = '📄 PDF importiert – bitte Felder prüfen und anpassen';
+      const existing = document.getElementById('pdf-import-hint');
+      if (existing) existing.remove();
+      const btn = document.querySelector('#modal-add-recipe .btn-gold');
+      if (btn) btn.parentNode.insertBefore(hint, btn);
     }, 100);
   } catch(e) {
     alert('PDF-Import nicht verfügbar. Bitte Rezept manuell eingeben.');
