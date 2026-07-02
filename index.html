@@ -30,7 +30,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 body { overflow: hidden; }
 
 /* ── Layout ── */
-#app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; padding-top: env(safe-area-inset-top); }
+#app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; padding-top: max(env(safe-area-inset-top), 50px); }
 #content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: var(--tab-h); }
 .view { display: none; padding: 16px; animation: fadeIn .18s ease; }
 .view.active { display: block; }
