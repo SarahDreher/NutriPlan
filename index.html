@@ -1071,11 +1071,13 @@ function showScanStatus(msg, isError) {
 
 // Gemeinsame Funktion: befüllt alle Rezeptfelder aus geparsten Daten
 function fillRecipeFields(parsed) {
-  if (parsed.name)  document.getElementById('r-name').value = parsed.name;
-  if (parsed.ingredients?.length)
-    document.getElementById('r-ingredients').value = parsed.ingredients.join('\n');
-  if (parsed.steps?.length)
-    document.getElementById('r-instructions').value = parsed.steps.join('\n');
+  // Hilfsfunktion: Array oder String → mehrzeiliger String
+  const toText = v => Array.isArray(v) ? v.join('\n') : (typeof v === 'string' ? v : '');
+  if (parsed.name)        document.getElementById('r-name').value = parsed.name;
+  const ing = toText(parsed.ingredients);
+  if (ing)  document.getElementById('r-ingredients').value = ing;
+  const steps = toText(parsed.steps);
+  if (steps) document.getElementById('r-instructions').value = steps;
   if (parsed.calories && !isNaN(parsed.calories)) {
     const cal = Math.max(50, Math.min(3000, Math.round(+parsed.calories / 50) * 50));
     _recipeForm.calories = cal;
