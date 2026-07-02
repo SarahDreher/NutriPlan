@@ -548,6 +548,30 @@ let _cookChecked = {};
 // Temp state for fixed meal day toggles
 let _fixedDaysSelection = ['all'];
 
+async function hfFetch(payload) {
+  const token = payload._token || state.settings.token.trim();
+  const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  if (isLocal) {
+    const resp = await fetch('/api/hf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return resp;
+  } else {
+    const { _token, ...body } = payload;
+    const resp = await fetch('https://router.huggingface.co/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(body)
+    });
+    return resp;
+  }
+}
+
 function save() {
   try { localStorage.setItem('nutriplan', JSON.stringify(state)); } catch(e) {}
   // ÄNDERUNG 1: Mahlzeiten-Geschichte separat speichern
@@ -1064,23 +1088,19 @@ async function scanRecipePhoto(file) {
     // Strip the data URL prefix to get pure base64, then reconstruct full data URL
     const imageUrl = base64; // resizeImageToBase64 already returns data:image/jpeg;base64,...
 
-    const resp = await fetch('/api/hf', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        _token: token,
-        model: 'meta-llama/Llama-3.2-11B-Vision-Instruct',
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image_url', image_url: { url: imageUrl } },
-            { type: 'text', text: 'Du bist ein Kochbuch-Scanner. Analysiere dieses Rezeptfoto und extrahiere alle Informationen.\n\nAntworte NUR mit diesem JSON (kein Text davor oder danach):\n{\n  "name": "Rezeptname",\n  "ingredients": ["200g Mehl", "3 Eier"],\n  "steps": ["Schritt 1: ...", "Schritt 2: ..."],\n  "calories": 450,\n  "duration": 30\n}\n\nRegeln:\n- ingredients: jede Zutat als eigener String mit Menge\n- steps: klare, nummerierte Schritte\n- calories: geschätzte kcal pro Portion (oder null wenn unbekannt)\n- duration: geschätzte Zubereitungszeit in Minuten (oder null)\n- Antworte auf Deutsch' }
-          ]
-        }],
-        max_tokens: 2000,
-        temperature: 0.3,
-        stream: false
-      })
+    const resp = await hfFetch({
+      _token: token,
+      model: 'meta-llama/Llama-3.2-11B-Vision-Instruct',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: imageUrl } },
+          { type: 'text', text: 'Du bist ein Kochbuch-Scanner. Analysiere dieses Rezeptfoto und extrahiere alle Informationen.\n\nAntworte NUR mit diesem JSON (kein Text davor oder danach):\n{\n  "name": "Rezeptname",\n  "ingredients": ["200g Mehl", "3 Eier"],\n  "steps": ["Schritt 1: ...", "Schritt 2: ..."],\n  "calories": 450,\n  "duration": 30\n}\n\nRegeln:\n- ingredients: jede Zutat als eigener String mit Menge\n- steps: klare, nummerierte Schritte\n- calories: geschätzte kcal pro Portion (oder null wenn unbekannt)\n- duration: geschätzte Zubereitungszeit in Minuten (oder null)\n- Antworte auf Deutsch' }
+        ]
+      }],
+      max_tokens: 2000,
+      temperature: 0.3,
+      stream: false
     });
 
     if (!resp.ok) {
@@ -1641,20 +1661,16 @@ async function fetchFixedMealTips() {
   const mealsList = meals.map(fm => ({ id: fm.id, description: fm.description }));
 
   try {
-    const resp = await fetch('/api/hf', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        _token: token,
-        model: state.settings.hfModel,
-        messages: [
-          { role: 'system', content: 'Du bist Ernaehrungsberater. Gib fuer jede beschriebene Mahlzeit einen kurzen Optimierungstipp auf Deutsch (max. 1 Satz). Antworte nur mit validem JSON ohne Markdown.' },
-          { role: 'user', content: `Gib fuer jede Mahlzeit einen kurzen Tipp. Antworte NUR mit JSON-Array: [{"id":"...","tip":"..."}]\n${JSON.stringify(mealsList)}` }
-        ],
-        max_tokens: 800,
-        temperature: 0.5,
-        stream: false
-      })
+    const resp = await hfFetch({
+      _token: token,
+      model: state.settings.hfModel,
+      messages: [
+        { role: 'system', content: 'Du bist Ernaehrungsberater. Gib fuer jede beschriebene Mahlzeit einen kurzen Optimierungstipp auf Deutsch (max. 1 Satz). Antworte nur mit validem JSON ohne Markdown.' },
+        { role: 'user', content: `Gib fuer jede Mahlzeit einen kurzen Tipp. Antworte NUR mit JSON-Array: [{"id":"...","tip":"..."}]\n${JSON.stringify(mealsList)}` }
+      ],
+      max_tokens: 800,
+      temperature: 0.5,
+      stream: false
     });
 
     if (!resp.ok) throw new Error(`API-Fehler ${resp.status}`);
@@ -1998,7 +2014,6 @@ async function generatePlan() {
     ? state.recipes.map(r => `- ID:${r.id} | ${r.name} (${(MEAL_META[r.category]||MEAL_META.any).label}, ${Math.round(r.calories/(r.servings||1))} kcal) | ${(r.ingredients||[]).slice(0,4).join(', ')}`).join('\n')
     : 'Keine.';
 
-  // ÄNDERUNG 1: Mahlzeiten-Gedächtnis aufbauen
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - 14);
   state.mealHistory = (state.mealHistory || []).filter(entry => new Date(entry.date) > cutoff);
@@ -2007,11 +2022,138 @@ async function generatePlan() {
     .slice(-50)
     .join(', ') || 'keine';
 
-  // ÄNDERUNG 5: Feste Mahlzeiten in den Prompt einbauen
   const fixedMealsList = (state.fixedMeals || []).length
     ? (state.fixedMeals || []).map(fm => {
         const daysLabel = fm.days.includes('all') ? 'täglich'
           : fm.days.map(d => ({mon:'Mo',tue:'Di',wed:'Mi',thu:'Do',fri:'Fr',sat:'Sa',sun:'So'}[d]||d)).join(', ');
         let detail = fm.description;
         if (fm.recipeId) {
-          
+          const r = (state.recipes||[]).find(r => r.id === fm.recipeId);
+          if (r) detail = r.name;
+        }
+        return `- ${fm.mealType} (${daysLabel}): ${detail}`;
+      }).join('\n')
+    : 'Keine.';
+
+  const mainMealLine = {
+    morning: 'Das Fruehstueck soll die kalorienreichste Mahlzeit des Tages sein.',
+    midday:  'Das Mittagessen soll die kalorienreichste Mahlzeit des Tages sein.',
+    evening: 'Das Abendessen soll die kalorienreichste Mahlzeit des Tages sein.'
+  }[state.settings.mainMeal] || 'Das Mittagessen soll die kalorienreichste Mahlzeit des Tages sein.';
+
+  // Einschränkungen aus Hauptperson
+  const mainPerson = (state.household?.persons || []).find(p => p.isMain) || {};
+  let restrictionLines = '';
+  if (mainPerson.restrictionBreakfast) restrictionLines += `- Fruehstueck: ${mainPerson.restrictionBreakfast}\n`;
+  if (mainPerson.restrictionLunch)     restrictionLines += `- Mittagessen: ${mainPerson.restrictionLunch}\n`;
+  if (mainPerson.restrictionDinner)    restrictionLines += `- Abendessen: ${mainPerson.restrictionDinner}\n`;
+  if (mainPerson.restrictionSnack)     restrictionLines += `- Snack: ${mainPerson.restrictionSnack}\n`;
+
+  // Gemeinsame Mahlzeiten anderer Personen
+  const sharedPersonsInfo = Object.entries(state.household?.sharedMeals || {})
+    .filter(([, isShared]) => isShared && (state.household?.persons||[]).length > 1)
+    .map(([mealType]) => {
+      const mealLabel = {breakfast:'Fruehstueck',lunch:'Mittagessen',dinner:'Abendessen',snack:'Snack'}[mealType];
+      const others = (state.household?.persons||[]).filter(p => !p.isMain);
+      const infos = others.map(p => {
+        const parts = [];
+        if (p.avoided?.length) parts.push(`Allergien: ${p.avoided.join(', ')}`);
+        if (p.disliked?.length) parts.push(`mag nicht: ${p.disliked.join(', ')}`);
+        const r = p[`restriction${mealType.charAt(0).toUpperCase()+mealType.slice(1)}`];
+        if (r) parts.push(r);
+        return parts.length ? `${p.name}: ${parts.join('; ')}` : null;
+      }).filter(Boolean);
+      return infos.length ? `${mealLabel} (gemeinsam mit ${others.map(p=>p.name).join(', ')}): ${infos.join(' | ')}` : null;
+    }).filter(Boolean).join('\n');
+
+  const prompt = `Du bist ein professioneller Ernaehrungsberater. Erstelle einen Wochenessensplan (Montag bis Sonntag) fuer eine Person.
+
+VORGABEN:
+- Kalorien pro Tag: ca. ${state.settings.calories} kcal
+- Mahlzeiten pro Tag: ${state.settings.mealsPerDay} (${mealNames})
+- Ernaehrungsweise: ${state.settings.diet}
+- Jahreszeit: ${season} (saisonale Zutaten bevorzugen)
+- ${mainMealLine}
+- Zu vermeiden (Allergien): ${avoided}
+- Unbeliebte Lebensmittel (wenn moeglich weglassen): ${disliked}
+${restrictionLines ? `- Mahlzeit-Einschraenkungen:\n${restrictionLines}` : ''}
+${sharedPersonsInfo ? `GEMEINSAME MAHLZEITEN – andere Haushaltsmitglieder essen mit:\n${sharedPersonsInfo}\nBei diesen Mahlzeiten MUESSEN deren Einschraenkungen beruecksichtigt werden.\n` : ''}
+ZULETZT GEGESSEN (letzte 2 Wochen, bitte Abwechslung sicherstellen):
+${historyList}
+
+FESTE MAHLZEITEN (MUESSEN eingehalten werden):
+${fixedMealsList}
+
+VERFUEGBARE REZEPTE AUS DER BIBLIOTHEK (bevorzugt einplanen wenn passend):
+${recipeList}
+
+AUSGABE-FORMAT (strikt einhalten, kein anderer Text):
+Antworte NUR mit einem gueltigen JSON-Objekt in exakt diesem Format:
+{
+  "days": [
+    {
+      "day": "Montag",
+      "meals": [
+        {
+          "type": "Fruehstueck",
+          "name": "Haferflocken mit Beeren",
+          "calories": 380,
+          "ingredients": ["80g Haferflocken", "150ml Milch", "100g gemischte Beeren", "1 TL Honig"],
+          "steps": ["Haferflocken mit Milch aufkochen", "Beeren und Honig hinzufuegen"],
+          "recipeId": null
+        }
+      ]
+    }
+  ]
+}
+
+Wichtig:
+- recipeId nur setzen wenn eine passende Bibliotheks-Rezept-ID existiert (exakt wie angegeben)
+- steps: mindestens 2-3 konkrete Zubereitungsschritte
+- Kalorien pro Mahlzeit so verteilen dass die Tagessumme stimmt
+- Abwechslungsreich, lecker, alltagstauglich`;
+
+  try {
+    const resp = await hfFetch({
+      _token: token,
+      model: state.settings.hfModel,
+      messages: [
+        { role: 'system', content: 'Du bist ein Ernaehrungsberater. Antworte ausschliesslich mit validem JSON, ohne Erklaerungen oder Markdown.' },
+        { role: 'user', content: prompt }
+      ],
+      max_tokens: 6000,
+      temperature: 0.7,
+      stream: false
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`API-Fehler ${resp.status}: ${errText.slice(0,200)}`);
+    }
+
+    const data = await resp.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    const match = content.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('Kein JSON in der Antwort gefunden.');
+    const plan = JSON.parse(match[0]);
+    if (!plan.days || !Array.isArray(plan.days)) throw new Error('Ungültiges Plan-Format.');
+
+    state.plan = plan;
+    // Mahlzeiten ins Gedächtnis aufnehmen
+    const todayStr = new Date().toISOString().slice(0,10);
+    const mealNames2 = plan.days.flatMap(d => (d.meals||[]).map(m => m.name));
+    state.mealHistory = [...(state.mealHistory||[]), { date: todayStr, meals: mealNames2 }];
+    save();
+    renderPlan();
+  } catch (e) {
+    console.error('generatePlan Fehler:', e);
+    alert('Fehler beim Erstellen des Plans:\n' + e.message);
+    isGenerating = false;
+    renderPlan();
+  } finally {
+    isGenerating = false;
+  }
+}
+</script>
+</body>
+</html>
