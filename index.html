@@ -5,7 +5,7 @@
 <link rel="manifest" href="/manifest.json">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="NutriPlan">
 <meta name="theme-color" content="#C9AB6E">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -30,7 +30,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 body { overflow: hidden; }
 
 /* ── Layout ── */
-#app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+#app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; padding-top: env(safe-area-inset-top); }
 #content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: var(--tab-h); }
 .view { display: none; padding: 16px; animation: fadeIn .18s ease; }
 .view.active { display: block; }
