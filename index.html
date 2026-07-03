@@ -521,6 +521,8 @@ let state = {
   customItems: [],
   // ÄNDERUNG 5: Feste Mahlzeiten
   fixedMeals: [],
+  // Plan-Verlauf
+  planHistory: [],
   // Haushalt
   household: {
     persons: [
@@ -584,6 +586,8 @@ function save() {
   try { localStorage.setItem('nutriplan_fixed_meals', JSON.stringify(state.fixedMeals)); } catch(e) {}
   // Household speichern
   try { localStorage.setItem('nutriplan_household', JSON.stringify(state.household)); } catch(e) {}
+  // Plan-Verlauf speichern
+  try { localStorage.setItem('nutriplan_plan_history', JSON.stringify(state.planHistory || [])); } catch(e) {}
 }
 
 function load() {
@@ -611,6 +615,12 @@ function load() {
     const hh = localStorage.getItem('nutriplan_household');
     if (hh) state.household = JSON.parse(hh);
   } catch(e) {}
+  // Plan-Verlauf laden
+  try {
+    const ph = localStorage.getItem('nutriplan_plan_history');
+    if (ph) state.planHistory = JSON.parse(ph);
+  } catch(e) { state.planHistory = []; }
+  if (!Array.isArray(state.planHistory)) state.planHistory = [];
   // Fallback
   if (!state.household) state.household = {
     persons: [{id:'main',name:'Ich',isMain:true,diet:'Alles',disliked:[],avoided:[],restrictionBreakfast:'',restrictionLunch:'',restrictionDinner:'',restrictionSnack:''}],
@@ -723,6 +733,15 @@ function renderPlan() {
       <div class="empty-icon">📅</div>
       <div class="empty-title">Noch kein Plan erstellt</div>
       <div class="empty-text">Wähle die Anzahl Tage und tippe auf „Plan erstellen".</div>
+    </div>`;
+  }
+
+  // Plan-Verlauf Button
+  if ((state.planHistory || []).length > 0) {
+    html += `<div style="text-align:center;margin-top:4px">
+      <button onclick="openPlanHistory()" style="background:none;border:1px solid var(--divider);color:var(--muted);border-radius:20px;padding:8px 16px;font-size:13px;cursor:pointer;margin-top:8px">
+        📋 Frühere Pläne (${(state.planHistory || []).length})
+      </button>
     </div>`;
   }
 
@@ -925,6 +944,17 @@ function changeCookPortions(delta) {
   }
 }
 </script>
+
+<div class="modal-overlay" id="modal-plan-history" onclick="if(event.target===this)closeModal('modal-plan-history')">
+  <div class="modal" style="max-width:480px;width:92%">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title">📋 Frühere Pläne</div>
+      <button class="modal-close" onclick="closeModal('modal-plan-history')">✕</button>
+    </div>
+    <div class="modal-body" id="plan-history-list" style="padding:12px 16px"></div>
+  </div>
+</div>
 
 <script>
 // ═══════════════════════════════════════════════
@@ -2164,14 +2194,25 @@ Wichtig:
     }
 
     const data = await resp.json();
-    const content = data.choices?.[0]?.message?.content || '';
-    const match = content.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error('Kein JSON in der Antwort gefunden.');
-    const plan = JSON.parse(match[0]);
+    const content2 = data.choices?.[0]?.message?.content || '';
+    const match2 = content2.match(/\{[\s\S]*\}/);
+    if (!match2) throw new Error('Kein JSON in der Antwort gefunden.');
+    const plan = JSON.parse(match2[0]);
     if (!plan.days || !Array.isArray(plan.days)) throw new Error('Ungültiges Plan-Format.');
 
+    // Aktuellen Plan in Verlauf sichern
+    if (state.plan && state.plan.days) {
+      state.planHistory = [
+        { id: Date.now().toString(), savedAt: new Date().toISOString(), plan: state.plan },
+        ...(state.planHistory || [])
+      ].slice(0, 28);
+    }
+    // Pläne älter als 4 Wochen löschen
+    const cutoff4w = new Date();
+    cutoff4w.setDate(cutoff4w.getDate() - 28);
+    state.planHistory = (state.planHistory || []).filter(e => new Date(e.savedAt) > cutoff4w);
+
     state.plan = plan;
-    // Mahlzeiten ins Gedächtnis aufnehmen
     const todayStr = new Date().toISOString().slice(0,10);
     const mealNames2 = plan.days.flatMap(d => (d.meals||[]).map(m => m.name));
     state.mealHistory = [...(state.mealHistory||[]), { date: todayStr, meals: mealNames2 }];
@@ -2179,13 +2220,69 @@ Wichtig:
     renderPlan();
   } catch (e) {
     console.error('generatePlan Fehler:', e);
-    const msg = e.name === 'AbortError' ? 'Zeitüberschreitung (90s) – bitte erneut versuchen.' : e.message;
+    const msg = e.name === 'AbortError' ? 'Zeitüberschreitung – bitte erneut versuchen.' : e.message;
     alert('Fehler beim Erstellen des Plans:\n' + msg);
     isGenerating = false;
     renderPlan();
   } finally {
     isGenerating = false;
   }
+}
+
+// ── Plan-Verlauf ───────────────────────────────────────────────────────────
+function openPlanHistory() {
+  renderPlanHistoryList();
+  openModal('modal-plan-history');
+}
+
+function renderPlanHistoryList() {
+  const list = document.getElementById('plan-history-list');
+  if (!list) return;
+  const history = state.planHistory || [];
+  if (!history.length) {
+    list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px">Noch keine früheren Pläne gespeichert.</p>';
+    return;
+  }
+  list.innerHTML = history.map((entry, i) => {
+    const d = new Date(entry.savedAt);
+    const label = d.toLocaleDateString('de-DE', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
+    const time  = d.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+    const days  = entry.plan?.days?.length || 0;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--divider)">
+      <div>
+        <div style="font-size:14px;font-weight:500">${label}</div>
+        <div style="font-size:12px;color:var(--muted)">${time} Uhr · ${days} Tage</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        <button onclick="restorePlan(${i})" style="padding:6px 12px;background:var(--gold);border:none;border-radius:14px;color:#000;font-size:13px;font-weight:600;cursor:pointer">Laden</button>
+        <button onclick="deletePlanHistory(${i})" style="padding:6px 10px;background:var(--elevated);border:none;border-radius:14px;color:var(--muted);font-size:16px;cursor:pointer">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function restorePlan(index) {
+  const entry = (state.planHistory || [])[index];
+  if (!entry) return;
+  if (state.plan && state.plan.days) {
+    state.planHistory = [
+      { id: Date.now().toString(), savedAt: new Date().toISOString(), plan: state.plan },
+      ...(state.planHistory.filter((_, i) => i !== index))
+    ];
+  } else {
+    state.planHistory = state.planHistory.filter((_, i) => i !== index);
+  }
+  state.plan = entry.plan;
+  save();
+  closeModal('modal-plan-history');
+  switchTab('plan');
+}
+
+function deletePlanHistory(index) {
+  state.planHistory = (state.planHistory || []).filter((_, i) => i !== index);
+  save();
+  renderPlanHistoryList();
+  renderPlan();
 }
 
 // ── App-Start ──────────────────────────────────────────────────────────────
