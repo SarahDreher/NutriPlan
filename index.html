@@ -2053,6 +2053,14 @@ function savePersonModal() {
 // ═══════════════════════════════════════════════
 // HUGGING FACE API
 // ═══════════════════════════════════════════════
+function currentSeason() {
+  const m = new Date().getMonth() + 1; // 1–12
+  if (m >= 3 && m <= 5)  return 'Frühling';
+  if (m >= 6 && m <= 8)  return 'Sommer';
+  if (m >= 9 && m <= 11) return 'Herbst';
+  return 'Winter';
+}
+
 async function generatePlan() {
   if (isGenerating) return;
   const token = state.settings.token.trim();
