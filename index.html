@@ -1746,7 +1746,7 @@ function renderSettings() {
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--divider)">
       <div>
         <span style="font-size:14px;font-weight:500">${p.name}</span>
-        ${p.isMain ? '<span style="font-size:11px;color:var(--muted);margin-left:6px">(Hauptperson)</span>' : ''}
+        ${p.isMain ? '<span style="font-size:11px;color:var(--gold);margin-left:6px">(Ich)</span>' : ''}
         <div style="font-size:12px;color:var(--muted);margin-top:2px">${p.diet}${p.avoided&&p.avoided.length?' · '+p.avoided.slice(0,2).join(', ')+(p.avoided.length>2?'...':''):''}</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
@@ -1933,7 +1933,7 @@ function openPersonModal(idx) {
   body.innerHTML = `
     <div class="field">
       <label>Name</label>
-      <input id="person-name-input" value="${p.name}" ${p.isMain ? 'readonly style="opacity:.6"' : ''} placeholder="Name">
+      <input id="person-name-input" value="${p.name}" placeholder="Name">
     </div>
     <div class="field">
       <label>Ernährungsweise</label>
@@ -1998,10 +1998,8 @@ function savePersonModal() {
   const idx = window._editPersonIdx;
   const p = state.household.persons[idx];
   if (!p) return;
-  if (!p.isMain) {
-    const nameEl = document.getElementById('person-name-input');
-    if (nameEl) p.name = nameEl.value.trim() || p.name;
-  }
+  const nameEl = document.getElementById('person-name-input');
+  if (nameEl && nameEl.value.trim()) p.name = nameEl.value.trim();
   const dietEl = document.getElementById('person-diet-input');
   if (dietEl) p.diet = dietEl.value;
   p.restrictionBreakfast = document.getElementById('person-rb-input')?.value.trim() || '';
@@ -2152,7 +2150,7 @@ Wichtig:
           { role: 'system', content: 'Du bist ein Ernaehrungsberater. Antworte ausschliesslich mit validem JSON, ohne Erklaerungen oder Markdown.' },
           { role: 'user', content: prompt }
         ],
-        max_tokens: 6000,
+        max_tokens: 3500,
         temperature: 0.7,
         stream: false
       }, controller.signal);
