@@ -502,7 +502,7 @@ const MEAL_META = {
 // ÄNDERUNG 4: Kalorien-Standard auf 1350, Maximum bleibt bei 2000
 let state = {
   settings: {
-    calories: 1350, mealsPerDay: 3, diet: 'Alles',
+    calories: 1350, mealsPerDay: 3, selectedMeals: ['breakfast','lunch','dinner'], diet: 'Alles',
     hfModel: 'meta-llama/Llama-3.1-8B-Instruct',
     token: '', disliked: [], avoided: [],
     mainMeal: 'midday',
@@ -621,6 +621,13 @@ function load() {
     if (ph) state.planHistory = JSON.parse(ph);
   } catch(e) { state.planHistory = []; }
   if (!Array.isArray(state.planHistory)) state.planHistory = [];
+  // Migration: mealsPerDay → selectedMeals
+  if (!state.settings.selectedMeals) {
+    const mp = state.settings.mealsPerDay || 3;
+    state.settings.selectedMeals = mp === 2 ? ['breakfast','dinner']
+      : mp === 4 ? ['breakfast','lunch','dinner','snack']
+      : ['breakfast','lunch','dinner'];
+  }
   // Fallback
   if (!state.household) state.household = {
     persons: [{id:'main',name:'Ich',isMain:true,diet:'Alles',disliked:[],avoided:[],restrictionBreakfast:'',restrictionLunch:'',restrictionDinner:'',restrictionSnack:''}],
@@ -718,12 +725,17 @@ function renderPlan() {
   }
 
   if (state.plan) {
+    const cookedCount = state.plan.days.filter(d => d.cooked).length;
+    const planGenDate = state.plan.generatedAt
+      ? new Date(state.plan.generatedAt).toLocaleString('de-DE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})
+      : '';
     html += `<div class="card" style="display:flex;align-items:center;justify-content:space-between">
       <div>
         <div style="font-size:16px;font-weight:700">${state.plan.days.length}-Tage-Plan</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">Erstellt ${new Date(state.plan.generatedAt).toLocaleString('de-DE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">Erstellt ${planGenDate}</div>
+        ${cookedCount > 0 ? `<div style="font-size:12px;color:var(--green);margin-top:3px">✓ ${cookedCount} von ${state.plan.days.length} Tagen gekocht</div>` : ''}
       </div>
-      <div style="font-size:24px">📅</div>
+      <button onclick="deletePlan()" style="background:none;border:1px solid var(--divider);color:var(--muted);border-radius:16px;padding:6px 12px;font-size:12px;cursor:pointer">🗑 Löschen</button>
     </div>`;
     for (const day of state.plan.days) {
       html += renderDayCard(day);
@@ -748,11 +760,19 @@ function renderPlan() {
   c.innerHTML = html;
 }
 
+function formatDayDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('de-DE', { weekday:'short', day:'2-digit', month:'short' });
+}
+
 function renderDayCard(day) {
   const ratio = day.totalCalories / state.settings.calories;
   const cls = ratio > 1.12 ? 'red' : ratio < 0.88 ? 'gold' : 'green';
   const barPct = Math.min(ratio * 100, 100).toFixed(1);
   const barColor = cls === 'green' ? 'var(--green)' : cls === 'gold' ? 'var(--gold)' : 'var(--red)';
+  const dateLabel = day.date ? formatDayDate(day.date) : `Tag ${day.dayNumber}`;
+  const cookedStyle = day.cooked ? 'opacity:0.6' : '';
 
   let meals = day.meals.map(m => `
     <div class="meal-row">
@@ -764,17 +784,41 @@ function renderDayCard(day) {
       <span class="meal-kcal">${m.calories} kcal</span>
     </div>`).join('');
 
-  return `<div class="day-card" onclick="openDayModal(${day.dayNumber})">
-    <div class="day-card-header">
-      <span class="day-num">Tag ${day.dayNumber}</span>
+  return `<div class="day-card" style="${cookedStyle}">
+    <div class="day-card-header" onclick="openDayModal(${day.dayNumber})" style="cursor:pointer">
+      <div>
+        <span class="day-num">${dateLabel}</span>
+        ${day.cooked ? '<span style="font-size:11px;color:var(--green);margin-left:6px;font-weight:600">✓ Gekocht</span>' : ''}
+      </div>
       <span class="day-kcal ${cls}">🔥 ${day.totalCalories} kcal</span>
     </div>
     <div class="cal-bar">
       <div class="progress-track"><div class="progress-fill" style="width:${barPct}%;background:${barColor}"></div></div>
     </div>
     ${meals}
-    <div class="day-hint">Tippen für Details ›</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--divider)">
+      <button onclick="openDayModal(${day.dayNumber})" style="background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:0">Details ›</button>
+      <button onclick="event.stopPropagation();toggleDayCooked(${day.dayNumber})" style="background:${day.cooked?'var(--elevated)':'rgba(80,200,120,.15)'};border:1px solid ${day.cooked?'var(--divider)':'var(--green)'};color:${day.cooked?'var(--muted)':'var(--green)'};border-radius:16px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer">
+        ${day.cooked ? '↩ Rückgängig' : '✓ Als gekocht markieren'}
+      </button>
+    </div>
   </div>`;
+}
+
+function toggleDayCooked(dayNum) {
+  const day = state.plan?.days.find(d => d.dayNumber === dayNum);
+  if (!day) return;
+  day.cooked = !day.cooked;
+  save();
+  renderPlan();
+}
+
+function deletePlan() {
+  if (!confirm('Aktuellen Plan wirklich löschen?')) return;
+  state.plan = null;
+  state.shopping = [];
+  save();
+  renderPlan();
 }
 
 function changeDays(delta) {
@@ -791,13 +835,17 @@ function openDayModal(dayNum) {
   const day = state.plan?.days.find(d => d.dayNumber === dayNum);
   if (!day) return;
 
-  document.getElementById('modal-day-title').textContent = `Tag ${dayNum} · ${day.totalCalories} kcal`;
+  const dayDateLabel = day.date ? formatDayDate(day.date) : `Tag ${dayNum}`;
+  document.getElementById('modal-day-title').textContent = `${dayDateLabel} · ${day.totalCalories} kcal`;
 
   let html = `<div style="margin-bottom:14px">
     <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:6px">
       <span>${day.meals.length} Mahlzeiten</span><span>${day.totalCalories} kcal</span>
     </div>
     <div class="progress-track"><div class="progress-fill green" style="width:${Math.min(day.totalCalories/state.settings.calories*100,100).toFixed(1)}%"></div></div>
+    <button onclick="toggleDayCooked(${dayNum});closeModal('modal-day')" style="margin-top:12px;width:100%;background:${day.cooked?'var(--elevated)':'rgba(80,200,120,.15)'};border:1px solid ${day.cooked?'var(--divider)':'var(--green)'};color:${day.cooked?'var(--muted)':'var(--green)'};border-radius:16px;padding:10px;font-size:14px;font-weight:600;cursor:pointer">
+      ${day.cooked ? '↩ Als ungekocht markieren' : '✓ Tag als gekocht markieren'}
+    </button>
   </div>`;
 
   for (const meal of day.meals) {
@@ -1803,12 +1851,13 @@ function renderSettings() {
     <!-- ÄNDERUNG 4: max auf 2000, Standardwert 1350 -->
     <input type="range" min="1200" max="2000" step="50" value="${s.calories}" oninput="updateCal(this.value)" style="width:100%;margin-bottom:14px">
     <div class="divider"></div>
-    <div class="field-row">
-      <span>🍴 Mahlzeiten / Tag</span>
-      <div class="seg" style="width:130px">
-        <button class="seg-btn ${s.mealsPerDay===2?'active':''}" onclick="setSetting('mealsPerDay',2)">2</button>
-        <button class="seg-btn ${s.mealsPerDay===3?'active':''}" onclick="setSetting('mealsPerDay',3)">3</button>
-        <button class="seg-btn ${s.mealsPerDay===4?'active':''}" onclick="setSetting('mealsPerDay',4)">4</button>
+    <div style="margin:4px 0 8px">
+      <div style="font-size:14px;margin-bottom:10px">🍴 Welche Mahlzeiten?</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${[['breakfast','🌅 Frühstück'],['lunch','☀️ Mittag'],['dinner','🌙 Abendessen'],['snack','🍃 Snack']].map(([key,label]) => {
+          const sel = (s.selectedMeals||[]).includes(key);
+          return `<button onclick="toggleSelectedMeal('${key}')" style="padding:8px 14px;border-radius:20px;border:1px solid ${sel?'var(--gold)':'var(--divider)'};background:${sel?'rgba(201,171,110,.15)':'none'};color:${sel?'var(--gold)':'var(--muted)'};font-size:13px;cursor:pointer">${label}</button>`;
+        }).join('')}
       </div>
     </div>
     <div class="divider"></div>
@@ -1883,6 +1932,21 @@ function updateCal(val) {
 
 function setSetting(key, val) {
   state.settings[key] = val;
+  save();
+  renderSettings();
+}
+
+function toggleSelectedMeal(key) {
+  const sm = state.settings.selectedMeals || ['breakfast','lunch','dinner'];
+  const idx = sm.indexOf(key);
+  if (idx >= 0) {
+    if (sm.length <= 1) return; // at least one must stay
+    sm.splice(idx, 1);
+  } else {
+    sm.push(key);
+    sm.sort((a,b) => ['breakfast','lunch','dinner','snack'].indexOf(a) - ['breakfast','lunch','dinner','snack'].indexOf(b));
+  }
+  state.settings.selectedMeals = sm;
   save();
   renderSettings();
 }
@@ -2051,6 +2115,34 @@ function savePersonModal() {
 }
 
 // ═══════════════════════════════════════════════
+// PLAN NORMALIZATION
+// ═══════════════════════════════════════════════
+const MEAL_TYPE_MAP = {
+  'Fruehstueck':'breakfast','Frühstück':'breakfast',
+  'Mittagessen':'lunch','Lunch':'lunch',
+  'Abendessen':'dinner','Dinner':'dinner',
+  'Snack':'snack'
+};
+
+function normalizePlan(plan) {
+  const start = plan.generatedAt ? new Date(plan.generatedAt) : new Date();
+  plan.days.forEach((day, i) => {
+    day.dayNumber = i + 1;
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    day.date = d.toISOString().slice(0,10);
+    day.cooked = day.cooked || false;
+    day.meals = (day.meals || []).map(m => ({
+      ...m,
+      id: m.id || crypto.randomUUID(),
+      type: MEAL_TYPE_MAP[m.type] || m.type
+    }));
+    day.totalCalories = day.meals.reduce((s, m) => s + (parseInt(m.calories) || 0), 0);
+  });
+  return plan;
+}
+
+// ═══════════════════════════════════════════════
 // HUGGING FACE API
 // ═══════════════════════════════════════════════
 function currentSeason() {
@@ -2072,7 +2164,11 @@ async function generatePlan() {
   const season = currentSeason();
   const avoided  = state.settings.avoided?.length  ? state.settings.avoided.join(', ')  : 'keine';
   const disliked = state.settings.disliked?.length ? state.settings.disliked.join(', ') : 'keine';
-  const mealNames = { 2:'Fruehstueck, Abendessen', 3:'Fruehstueck, Mittagessen, Abendessen', 4:'Fruehstueck, Mittagessen, Abendessen, Snack' }[state.settings.mealsPerDay] || '';
+  const selectedMeals = state.settings.selectedMeals?.length
+    ? state.settings.selectedMeals
+    : ['breakfast','lunch','dinner'];
+  const mealLabelMap = { breakfast:'Fruehstueck', lunch:'Mittagessen', dinner:'Abendessen', snack:'Snack' };
+  const mealNames = selectedMeals.map(k => mealLabelMap[k] || k).join(', ');
   const recipeList = state.recipes.length
     ? state.recipes.map(r => `- ID:${r.id} | ${r.name} (${(MEAL_META[r.category]||MEAL_META.any).label}, ${Math.round(r.calories/(r.servings||1))} kcal) | ${(r.ingredients||[]).slice(0,4).join(', ')}`).join('\n')
     : 'Keine.';
@@ -2129,11 +2225,12 @@ async function generatePlan() {
       return infos.length ? `${mealLabel} (gemeinsam mit ${others.map(p=>p.name).join(', ')}): ${infos.join(' | ')}` : null;
     }).filter(Boolean).join('\n');
 
-  const prompt = `Du bist ein professioneller Ernaehrungsberater. Erstelle einen Wochenessensplan (Montag bis Sonntag) fuer eine Person.
+  const nDays = state.numberOfDays || 7;
+  const prompt = `Du bist ein professioneller Ernaehrungsberater. Erstelle einen Essensplan fuer genau ${nDays} ${nDays===1?'Tag':'Tage'} fuer eine Person.
 
 VORGABEN:
 - Kalorien pro Tag: ca. ${state.settings.calories} kcal
-- Mahlzeiten pro Tag: ${state.settings.mealsPerDay} (${mealNames})
+- Mahlzeiten pro Tag: ${selectedMeals.length} (${mealNames})
 - Ernaehrungsweise: ${state.settings.diet}
 - Jahreszeit: ${season} (saisonale Zutaten bevorzugen)
 - ${mainMealLine}
@@ -2151,11 +2248,11 @@ VERFUEGBARE REZEPTE AUS DER BIBLIOTHEK (bevorzugt einplanen wenn passend):
 ${recipeList}
 
 AUSGABE-FORMAT (strikt einhalten, kein anderer Text):
-Antworte NUR mit einem gueltigen JSON-Objekt in exakt diesem Format:
+Antworte NUR mit einem gueltigen JSON-Objekt in exakt diesem Format (${nDays} Eintraege in "days"):
 {
   "days": [
     {
-      "day": "Montag",
+      "day": "Tag 1",
       "meals": [
         {
           "type": "Fruehstueck",
@@ -2171,6 +2268,8 @@ Antworte NUR mit einem gueltigen JSON-Objekt in exakt diesem Format:
 }
 
 Wichtig:
+- Erstelle GENAU ${nDays} Tage (Tag 1 bis Tag ${nDays})
+- Nur diese Mahlzeiten pro Tag: ${mealNames}
 - recipeId nur setzen wenn eine passende Bibliotheks-Rezept-ID existiert (exakt wie angegeben)
 - steps: mindestens 2-3 konkrete Zubereitungsschritte
 - Kalorien pro Mahlzeit so verteilen dass die Tagessumme stimmt
@@ -2207,6 +2306,8 @@ Wichtig:
     if (!match2) throw new Error('Kein JSON in der Antwort gefunden.');
     const plan = JSON.parse(match2[0]);
     if (!plan.days || !Array.isArray(plan.days)) throw new Error('Ungültiges Plan-Format.');
+    plan.generatedAt = new Date().toISOString();
+    normalizePlan(plan);
 
     // Aktuellen Plan in Verlauf sichern
     if (state.plan && state.plan.days) {
