@@ -380,7 +380,7 @@ if ('serviceWorker' in navigator) {
       <div class="field" style="margin-top:14px"><label>Zutaten (eine pro Zeile) *</label><textarea id="r-ingredients" placeholder="80g Haferflocken&#10;250ml Hafermilch&#10;100g Heidelbeeren"></textarea></div>
       <div class="field"><label>Zubereitung</label><textarea id="r-instructions" placeholder="Schritt 1: ...&#10;Schritt 2: ..."></textarea></div>
       <div class="field"><label>Notizen (optional)</label><input id="r-notes" placeholder="Tipps, Variationen..."></div>
-      <input type="file" id="recipe-photo-input" accept="image/*" capture="environment" style="display:none">
+      <input type="file" id="recipe-photo-input" accept="image/*,image/heic,image/heif" style="display:none">
       <div class="field" id="recipe-photo-field">
         <label>Foto (optional)</label>
         <div id="recipe-photo-preview"></div>
@@ -1151,8 +1151,8 @@ function renderRecipePhotoPreview() {
   } else {
     wrap.innerHTML = `<div class="photo-upload-box" onclick="document.getElementById('recipe-photo-input').click()" style="height:auto;padding:18px 16px;gap:8px">
       <span style="font-size:30px">📷</span>
-      <span style="font-size:14px;font-weight:600;color:var(--text)">Rezept fotografieren / scannen</span>
-      <span style="font-size:12px;color:var(--muted);text-align:center">KI erkennt Zutaten &amp; Zubereitung automatisch</span>
+      <span style="font-size:14px;font-weight:600;color:var(--text)">Rezeptfoto auswählen oder aufnehmen</span>
+      <span style="font-size:12px;color:var(--muted);text-align:center">Aus Fotobibliothek, Kamera oder Dateien · KI erkennt Zutaten &amp; Zubereitung automatisch</span>
     </div>
     <div id="recipe-scan-status" style="display:none;margin-top:8px;font-size:13px;text-align:center"></div>`;
   }
@@ -1239,12 +1239,42 @@ async function parseWithAI(messagesPayload, fallbackFn, modelOverride) {
 
 async function scanRecipePhoto(file) {
   renderRecipePhotoPreview();
-  // Bild komprimieren und als Rezeptfoto speichern
-  const base64 = await new Promise(resolve => resizeImageToBase64(file, 1024, 0.85, resolve));
+  showScanStatus('📷 Bild wird vorbereitet…');
+
+  let base64;
+  try {
+    base64 = await new Promise((resolve, reject) =>
+      resizeImageToBase64(file, 1024, 0.82, resolve, reject)
+    );
+  } catch(e) {
+    showScanStatus('❌ Bild konnte nicht geladen werden: ' + (e || 'Unbekannter Fehler'), true);
+    return;
+  }
+
   window._recipePhotoData = base64;
   renderRecipePhotoPreview();
 
-  const prompt = 'Du bist ein Kochbuch-Scanner. Analysiere dieses Rezeptfoto und extrahiere alle Informationen.\n\nAntworte NUR mit diesem JSON (kein Text davor oder danach):\n{\n  "name": "Rezeptname",\n  "ingredients": ["200g Mehl", "3 Eier"],\n  "steps": ["Schritt 1: ...", "Schritt 2: ..."],\n  "calories": 450,\n  "duration": 30,\n  "servings": 2\n}\n\nRegeln:\n- ingredients: jede Zutat als eigener String mit Menge\n- steps: klare Zubereitungsschritte\n- calories: geschätzte kcal pro Portion\n- duration: Gesamtzeit in Minuten\n- servings: Portionen\n- Antworte auf Deutsch';
+  const prompt = `Du bist ein Kochbuch-Scanner. Lies dieses Rezeptbild (gedruckt oder handgeschrieben) sorgfältig und extrahiere alle Informationen.
+
+Antworte NUR mit diesem JSON-Objekt (kein Text davor oder danach):
+{
+  "name": "Rezeptname",
+  "ingredients": ["200g Mehl", "3 Eier"],
+  "steps": ["Schritt 1: ...", "Schritt 2: ..."],
+  "calories": 450,
+  "duration": 30,
+  "servings": 2
+}
+
+Regeln:
+- name: vollständiger Rezeptname wie im Bild
+- ingredients: jede Zutat als eigener String mit Menge und Einheit
+- steps: alle Zubereitungsschritte, vollständig und in richtiger Reihenfolge
+- calories: geschätzte kcal pro Portion (wenn im Bild steht, direkt übernehmen)
+- duration: Gesamtzeit in Minuten (Vorbereitung + Kochen)
+- servings: Anzahl Portionen
+- Antworte auf Deutsch
+- Falls etwas nicht lesbar ist, schätze es sinnvoll`;
 
   await parseWithAI([{
     role: 'user',
@@ -1255,9 +1285,27 @@ async function scanRecipePhoto(file) {
   }], null, 'meta-llama/Llama-3.2-11B-Vision-Instruct');
 }
 
-function resizeImageToBase64(file, maxSize, quality, callback) {
+function resizeImageToBase64(file, maxSize, quality, callback, errCallback) {
+  // Versuche zuerst createImageBitmap (unterstützt HEIC in Safari iOS)
+  const tryBitmap = (src) => {
+    fetch(src).then(r => r.blob()).then(blob => {
+      createImageBitmap(blob).then(bmp => {
+        const canvas = document.createElement('canvas');
+        let w = bmp.width, h = bmp.height;
+        if (w > maxSize || h > maxSize) {
+          if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
+          else { w = Math.round(w * maxSize / h); h = maxSize; }
+        }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(bmp, 0, 0, w, h);
+        callback(canvas.toDataURL('image/jpeg', quality));
+      }).catch(() => { if (errCallback) errCallback('Bildformat nicht lesbar'); });
+    }).catch(() => { if (errCallback) errCallback('Datei konnte nicht geladen werden'); });
+  };
+
   const reader = new FileReader();
   reader.onload = e => {
+    const src = e.target.result;
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
@@ -1270,8 +1318,10 @@ function resizeImageToBase64(file, maxSize, quality, callback) {
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
       callback(canvas.toDataURL('image/jpeg', quality));
     };
-    img.src = e.target.result;
+    img.onerror = () => tryBitmap(src);
+    img.src = src;
   };
+  reader.onerror = () => { if (errCallback) errCallback('Datei konnte nicht gelesen werden'); };
   reader.readAsDataURL(file);
 }
 

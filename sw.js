@@ -1,4 +1,4 @@
-const CACHE = 'nutriplan-v8';
+const CACHE = 'nutriplan-v9';
 const ASSETS = ['/', '/index.html', '/manifest.json',
   '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
 
