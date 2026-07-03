@@ -548,14 +548,15 @@ let _cookChecked = {};
 // Temp state for fixed meal day toggles
 let _fixedDaysSelection = ['all'];
 
-async function hfFetch(payload) {
+async function hfFetch(payload, signal) {
   const token = payload._token || state.settings.token.trim();
   const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
   if (isLocal) {
     const resp = await fetch('/api/hf', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal
     });
     return resp;
   } else {
@@ -566,7 +567,8 @@ async function hfFetch(payload) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal
     });
     return resp;
   }
@@ -2139,17 +2141,24 @@ Wichtig:
 - Abwechslungsreich, lecker, alltagstauglich`;
 
   try {
-    const resp = await hfFetch({
-      _token: token,
-      model: state.settings.hfModel,
-      messages: [
-        { role: 'system', content: 'Du bist ein Ernaehrungsberater. Antworte ausschliesslich mit validem JSON, ohne Erklaerungen oder Markdown.' },
-        { role: 'user', content: prompt }
-      ],
-      max_tokens: 6000,
-      temperature: 0.7,
-      stream: false
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90000);
+    let resp;
+    try {
+      resp = await hfFetch({
+        _token: token,
+        model: state.settings.hfModel,
+        messages: [
+          { role: 'system', content: 'Du bist ein Ernaehrungsberater. Antworte ausschliesslich mit validem JSON, ohne Erklaerungen oder Markdown.' },
+          { role: 'user', content: prompt }
+        ],
+        max_tokens: 6000,
+        temperature: 0.7,
+        stream: false
+      }, controller.signal);
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!resp.ok) {
       const errText = await resp.text();
@@ -2172,13 +2181,20 @@ Wichtig:
     renderPlan();
   } catch (e) {
     console.error('generatePlan Fehler:', e);
-    alert('Fehler beim Erstellen des Plans:\n' + e.message);
+    const msg = e.name === 'AbortError' ? 'Zeitüberschreitung (90s) – bitte erneut versuchen.' : e.message;
+    alert('Fehler beim Erstellen des Plans:\n' + msg);
     isGenerating = false;
     renderPlan();
   } finally {
     isGenerating = false;
   }
 }
+
+// ── App-Start ──────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  load();
+  switchTab('plan');
+});
 </script>
 </body>
 </html>
