@@ -706,6 +706,19 @@ function renderPlan() {
         <button class="stepper-btn" onclick="changeDays(1)">+</button>
       </div>
     </div>
+    ${(() => {
+      const sm = state.settings.selectedMeals || ['breakfast','lunch','dinner'];
+      const MCAL = {breakfast:300,lunch:400,dinner:400,snack:100};
+      const MLBL = {breakfast:'Frühstück',lunch:'Mittagessen',dinner:'Abendessen',snack:'Snack'};
+      const all = ['breakfast','lunch','dinner','snack'];
+      const unpl = all.filter(m => !sm.includes(m));
+      const unplCal = unpl.reduce((s,m) => s + MCAL[m], 0);
+      if (unplCal === 0) return '';
+      const tgt = Math.max(300, state.settings.calories - unplCal);
+      return `<div style="background:rgba(201,171,110,.08);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--muted);line-height:1.6">
+        💡 <strong style="color:var(--text)">${unpl.map(m=>MLBL[m]).join(' & ')}</strong> (~${unplCal} kcal) nicht geplant → KI plant <strong style="color:var(--gold)">${tgt} kcal</strong> auf ${sm.map(m=>MLBL[m]).join(' & ')} verteilt.
+      </div>`;
+    })()}
     <button class="btn-gold" id="gen-btn" onclick="generatePlan()" ${!tokenOk || isGenerating ? 'disabled' : ''}>
       ${isGenerating
         ? '<div class="spinner"></div><span>Wird erstellt…</span>'
@@ -729,17 +742,16 @@ function renderPlan() {
     const planGenDate = state.plan.generatedAt
       ? new Date(state.plan.generatedAt).toLocaleString('de-DE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})
       : '';
-    html += `<div class="card" style="display:flex;align-items:center;justify-content:space-between">
-      <div>
-        <div style="font-size:16px;font-weight:700">${state.plan.days.length}-Tage-Plan</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">Erstellt ${planGenDate}</div>
-        ${cookedCount > 0 ? `<div style="font-size:12px;color:var(--green);margin-top:3px">✓ ${cookedCount} von ${state.plan.days.length} Tagen gekocht</div>` : ''}
+    html += `<div style="border:1px solid rgba(201,171,110,.3);border-radius:16px;overflow:hidden;margin-bottom:16px">
+      <div style="background:rgba(201,171,110,.08);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(201,171,110,.2)">
+        <div>
+          <div style="font-size:16px;font-weight:700">📅 ${state.plan.days.length}-Tage-Plan</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">Erstellt ${planGenDate}${cookedCount > 0 ? ` · <span style="color:var(--green)">✓ ${cookedCount}/${state.plan.days.length} gekocht</span>` : ''}</div>
+        </div>
+        <button onclick="deletePlan()" style="background:none;border:1px solid var(--divider);color:var(--muted);border-radius:16px;padding:6px 12px;font-size:12px;cursor:pointer">🗑 Löschen</button>
       </div>
-      <button onclick="deletePlan()" style="background:none;border:1px solid var(--divider);color:var(--muted);border-radius:16px;padding:6px 12px;font-size:12px;cursor:pointer">🗑 Löschen</button>
+      ${state.plan.days.map((day, i) => renderDayCard(day, i < state.plan.days.length - 1)).join('')}
     </div>`;
-    for (const day of state.plan.days) {
-      html += renderDayCard(day);
-    }
   } else if (!isGenerating) {
     html += `<div class="empty-state">
       <div class="empty-icon">📅</div>
@@ -766,13 +778,12 @@ function formatDayDate(dateStr) {
   return d.toLocaleDateString('de-DE', { weekday:'short', day:'2-digit', month:'short' });
 }
 
-function renderDayCard(day) {
+function renderDayCard(day, hasDivider = false) {
   const ratio = day.totalCalories / state.settings.calories;
   const cls = ratio > 1.12 ? 'red' : ratio < 0.88 ? 'gold' : 'green';
   const barPct = Math.min(ratio * 100, 100).toFixed(1);
   const barColor = cls === 'green' ? 'var(--green)' : cls === 'gold' ? 'var(--gold)' : 'var(--red)';
   const dateLabel = day.date ? formatDayDate(day.date) : `Tag ${day.dayNumber}`;
-  const cookedStyle = day.cooked ? 'opacity:0.6' : '';
 
   let meals = day.meals.map(m => `
     <div class="meal-row">
@@ -784,19 +795,19 @@ function renderDayCard(day) {
       <span class="meal-kcal">${m.calories} kcal</span>
     </div>`).join('');
 
-  return `<div class="day-card" style="${cookedStyle}">
-    <div class="day-card-header" onclick="openDayModal(${day.dayNumber})" style="cursor:pointer">
+  return `<div style="padding:14px 16px;${day.cooked?'opacity:0.65;':''}${hasDivider?'border-bottom:1px solid rgba(201,171,110,.15);':''}">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer" onclick="openDayModal(${day.dayNumber})">
       <div>
-        <span class="day-num">${dateLabel}</span>
-        ${day.cooked ? '<span style="font-size:11px;color:var(--green);margin-left:6px;font-weight:600">✓ Gekocht</span>' : ''}
+        <span style="font-size:15px;font-weight:700">${dateLabel}</span>
+        ${day.cooked ? '<span style="font-size:11px;color:var(--green);margin-left:8px;font-weight:600">✓ Gekocht</span>' : ''}
       </div>
-      <span class="day-kcal ${cls}">🔥 ${day.totalCalories} kcal</span>
+      <span class="day-kcal ${cls}" style="font-size:13px">🔥 ${day.totalCalories} kcal</span>
     </div>
-    <div class="cal-bar">
+    <div style="margin-bottom:8px">
       <div class="progress-track"><div class="progress-fill" style="width:${barPct}%;background:${barColor}"></div></div>
     </div>
     ${meals}
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--divider)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--divider)">
       <button onclick="openDayModal(${day.dayNumber})" style="background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:0">Details ›</button>
       <button onclick="event.stopPropagation();toggleDayCooked(${day.dayNumber})" style="background:${day.cooked?'var(--elevated)':'rgba(80,200,120,.15)'};border:1px solid ${day.cooked?'var(--divider)':'var(--green)'};color:${day.cooked?'var(--muted)':'var(--green)'};border-radius:16px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer">
         ${day.cooked ? '↩ Rückgängig' : '✓ Als gekocht markieren'}
@@ -1770,8 +1781,8 @@ async function fetchFixedMealTips() {
       _token: token,
       model: state.settings.hfModel,
       messages: [
-        { role: 'system', content: 'Du bist Ernaehrungsberater. Gib fuer jede beschriebene Mahlzeit einen kurzen Optimierungstipp auf Deutsch (max. 1 Satz). Antworte nur mit validem JSON ohne Markdown.' },
-        { role: 'user', content: `Gib fuer jede Mahlzeit einen kurzen Tipp. Antworte NUR mit JSON-Array: [{"id":"...","tip":"..."}]\n${JSON.stringify(mealsList)}` }
+        { role: 'system', content: 'Du bist Ernährungsberater. Gib für jede beschriebene Mahlzeit einen kurzen Optimierungstipp auf Deutsch (max. 1 Satz). Antworte nur mit validem JSON ohne Markdown.' },
+        { role: 'user', content: `Gib für jede Mahlzeit einen kurzen Tipp. Antworte NUR mit JSON-Array: [{"id":"...","tip":"..."}]\n${JSON.stringify(mealsList)}` }
       ],
       max_tokens: 800,
       temperature: 0.5,
@@ -1841,7 +1852,7 @@ function renderSettings() {
     </div>
   </div>
 
-  <!-- Ernaehrungsziele -->
+  <!-- Ernährungsziele -->
   <div class="card">
     <div class="card-title">Ernährungsziele – Ich</div>
     <div class="field-row">
@@ -2167,8 +2178,15 @@ async function generatePlan() {
   const selectedMeals = state.settings.selectedMeals?.length
     ? state.settings.selectedMeals
     : ['breakfast','lunch','dinner'];
-  const mealLabelMap = { breakfast:'Fruehstueck', lunch:'Mittagessen', dinner:'Abendessen', snack:'Snack' };
+  const mealLabelMap = { breakfast:'Frühstück', lunch:'Mittagessen', dinner:'Abendessen', snack:'Snack' };
   const mealNames = selectedMeals.map(k => mealLabelMap[k] || k).join(', ');
+
+  // Kalorien für nicht geplante Mahlzeiten abziehen
+  const MEAL_CAL_DEFAULT = { breakfast: 300, lunch: 400, dinner: 400, snack: 100 };
+  const allMealTypes = ['breakfast','lunch','dinner','snack'];
+  const unplannedMeals = allMealTypes.filter(m => !selectedMeals.includes(m));
+  const unplannedCal = unplannedMeals.reduce((s, m) => s + MEAL_CAL_DEFAULT[m], 0);
+  const targetCal = Math.max(300, state.settings.calories - unplannedCal);
   const recipeList = state.recipes.length
     ? state.recipes.map(r => `- ID:${r.id} | ${r.name} (${(MEAL_META[r.category]||MEAL_META.any).label}, ${Math.round(r.calories/(r.servings||1))} kcal) | ${(r.ingredients||[]).slice(0,4).join(', ')}`).join('\n')
     : 'Keine.';
@@ -2195,7 +2213,7 @@ async function generatePlan() {
     : 'Keine.';
 
   const mainMealLine = {
-    morning: 'Das Fruehstueck soll die kalorienreichste Mahlzeit des Tages sein.',
+    morning: 'Das Frühstück soll die kalorienreichste Mahlzeit des Tages sein.',
     midday:  'Das Mittagessen soll die kalorienreichste Mahlzeit des Tages sein.',
     evening: 'Das Abendessen soll die kalorienreichste Mahlzeit des Tages sein.'
   }[state.settings.mainMeal] || 'Das Mittagessen soll die kalorienreichste Mahlzeit des Tages sein.';
@@ -2203,7 +2221,7 @@ async function generatePlan() {
   // Einschränkungen aus Hauptperson
   const mainPerson = (state.household?.persons || []).find(p => p.isMain) || {};
   let restrictionLines = '';
-  if (mainPerson.restrictionBreakfast) restrictionLines += `- Fruehstueck: ${mainPerson.restrictionBreakfast}\n`;
+  if (mainPerson.restrictionBreakfast) restrictionLines += `- Frühstück: ${mainPerson.restrictionBreakfast}\n`;
   if (mainPerson.restrictionLunch)     restrictionLines += `- Mittagessen: ${mainPerson.restrictionLunch}\n`;
   if (mainPerson.restrictionDinner)    restrictionLines += `- Abendessen: ${mainPerson.restrictionDinner}\n`;
   if (mainPerson.restrictionSnack)     restrictionLines += `- Snack: ${mainPerson.restrictionSnack}\n`;
@@ -2212,7 +2230,7 @@ async function generatePlan() {
   const sharedPersonsInfo = Object.entries(state.household?.sharedMeals || {})
     .filter(([, isShared]) => isShared && (state.household?.persons||[]).length > 1)
     .map(([mealType]) => {
-      const mealLabel = {breakfast:'Fruehstueck',lunch:'Mittagessen',dinner:'Abendessen',snack:'Snack'}[mealType];
+      const mealLabel = {breakfast:'Frühstück',lunch:'Mittagessen',dinner:'Abendessen',snack:'Snack'}[mealType];
       const others = (state.household?.persons||[]).filter(p => !p.isMain);
       const infos = others.map(p => {
         const parts = [];
@@ -2226,40 +2244,46 @@ async function generatePlan() {
     }).filter(Boolean).join('\n');
 
   const nDays = state.numberOfDays || 7;
-  const prompt = `Du bist ein professioneller Ernaehrungsberater. Erstelle einen Essensplan fuer genau ${nDays} ${nDays===1?'Tag':'Tage'} fuer eine Person.
+  const unplannedNote = unplannedCal > 0
+    ? `- Hinweis: ${unplannedMeals.map(m => mealLabelMap[m]).join(' & ')} (zusammen ca. ${unplannedCal} kcal) werden außerhalb dieses Plans gegessen. Bitte nur ${targetCal} kcal auf die geplanten Mahlzeiten verteilen.`
+    : '';
+
+  const prompt = `Du bist ein professioneller Ernährungsberater. Erstelle einen Essensplan für genau ${nDays} ${nDays===1?'Tag':'Tage'} für eine Person.
 
 VORGABEN:
-- Kalorien pro Tag: ca. ${state.settings.calories} kcal
+- Tageskalorienbedarf gesamt: ${state.settings.calories} kcal
+- Kalorien für die geplanten Mahlzeiten: ca. ${targetCal} kcal
 - Mahlzeiten pro Tag: ${selectedMeals.length} (${mealNames})
-- Ernaehrungsweise: ${state.settings.diet}
+${unplannedNote}
+- Ernährungsweise: ${state.settings.diet}
 - Jahreszeit: ${season} (saisonale Zutaten bevorzugen)
 - ${mainMealLine}
 - Zu vermeiden (Allergien): ${avoided}
-- Unbeliebte Lebensmittel (wenn moeglich weglassen): ${disliked}
-${restrictionLines ? `- Mahlzeit-Einschraenkungen:\n${restrictionLines}` : ''}
-${sharedPersonsInfo ? `GEMEINSAME MAHLZEITEN – andere Haushaltsmitglieder essen mit:\n${sharedPersonsInfo}\nBei diesen Mahlzeiten MUESSEN deren Einschraenkungen beruecksichtigt werden.\n` : ''}
+- Unbeliebte Lebensmittel (wenn möglich weglassen): ${disliked}
+${restrictionLines ? `- Mahlzeit-Einschränkungen:\n${restrictionLines}` : ''}
+${sharedPersonsInfo ? `GEMEINSAME MAHLZEITEN – andere Haushaltsmitglieder essen mit:\n${sharedPersonsInfo}\nBei diesen Mahlzeiten MÜSSEN deren Einschränkungen berücksichtigt werden.\n` : ''}
 ZULETZT GEGESSEN (letzte 2 Wochen, bitte Abwechslung sicherstellen):
 ${historyList}
 
-FESTE MAHLZEITEN (MUESSEN eingehalten werden):
+FESTE MAHLZEITEN (MÜSSEN eingehalten werden):
 ${fixedMealsList}
 
-VERFUEGBARE REZEPTE AUS DER BIBLIOTHEK (bevorzugt einplanen wenn passend):
+VERFÜGBARE REZEPTE AUS DER BIBLIOTHEK (bevorzugt einplanen wenn passend):
 ${recipeList}
 
 AUSGABE-FORMAT (strikt einhalten, kein anderer Text):
-Antworte NUR mit einem gueltigen JSON-Objekt in exakt diesem Format (${nDays} Eintraege in "days"):
+Antworte NUR mit einem gültigen JSON-Objekt in exakt diesem Format (${nDays} Einträge in "days"):
 {
   "days": [
     {
       "day": "Tag 1",
       "meals": [
         {
-          "type": "Fruehstueck",
+          "type": "Frühstück",
           "name": "Haferflocken mit Beeren",
           "calories": 380,
           "ingredients": ["80g Haferflocken", "150ml Milch", "100g gemischte Beeren", "1 TL Honig"],
-          "steps": ["Haferflocken mit Milch aufkochen", "Beeren und Honig hinzufuegen"],
+          "steps": ["Haferflocken mit Milch aufkochen", "Beeren und Honig hinzufügen"],
           "recipeId": null
         }
       ]
@@ -2270,9 +2294,10 @@ Antworte NUR mit einem gueltigen JSON-Objekt in exakt diesem Format (${nDays} Ei
 Wichtig:
 - Erstelle GENAU ${nDays} Tage (Tag 1 bis Tag ${nDays})
 - Nur diese Mahlzeiten pro Tag: ${mealNames}
+- Kalorien pro Tag (Tagessumme der geplanten Mahlzeiten): ca. ${targetCal} kcal
 - recipeId nur setzen wenn eine passende Bibliotheks-Rezept-ID existiert (exakt wie angegeben)
 - steps: mindestens 2-3 konkrete Zubereitungsschritte
-- Kalorien pro Mahlzeit so verteilen dass die Tagessumme stimmt
+- Kalorien so auf die Mahlzeiten verteilen, dass die Tagessumme ca. ${targetCal} kcal ergibt
 - Abwechslungsreich, lecker, alltagstauglich`;
 
   try {
