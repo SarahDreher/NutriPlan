@@ -1295,23 +1295,21 @@ async function parseWithAI(messagesPayload, fallbackFn, modelOverride) {
     { model: 'HuggingFaceTB/SmolVLM-Instruct',           fn: hfFetchDirect },
   ];
 
+  const errors = [];
   for (const { model, fn } of visionStrategies) {
+    const shortName = model.split('/').pop();
     try {
+      showScanStatus(`🔄 Versuche ${shortName}…`);
       await tryModel(model, fn);
       return; // Erfolg
     } catch(e) {
       console.warn(`Versuch fehlgeschlagen (${model}):`, e.message);
-      if (e.message.includes('Load failed') || e.message.includes('NetworkError')) {
-        // CORS/Netzwerk-Fehler – nächste Strategie
-        showScanStatus('⚠️ Verbindungsproblem, versuche Alternative…');
-      } else if (e.message.includes('provider')) {
-        showScanStatus('⚠️ Provider nicht verfügbar, versuche Alternative…');
-      }
+      errors.push(`${shortName}: ${e.message}`);
     }
   }
 
-  // Alle Strategien fehlgeschlagen
-  showScanStatus('❌ Foto-Scan nicht verfügbar. Bitte Rezept manuell eingeben oder Provider unter huggingface.co/settings/inference-providers aktivieren.', true);
+  // Alle Strategien fehlgeschlagen – zeige genaue Fehler
+  showScanStatus('❌ Fehler:\n' + errors.join('\n'), true);
   if (fallbackFn) fallbackFn();
 }
 
