@@ -551,7 +551,20 @@ let _cookChecked = {};
 // Temp state for fixed meal day toggles
 let _fixedDaysSelection = ['all'];
 
-// Direkter Modell-Endpunkt (für Vision-Modelle, umgeht Provider-Beschränkungen)
+// HF Inference API – direkter Provider-Pfad im Router (CORS-sicher, für Vision-Modelle)
+async function hfFetchVision(payload, signal) {
+  const token = payload._token || state.settings.token.trim();
+  const { _token, model, ...body } = payload;
+  const url = `https://router.huggingface.co/hf-inference/models/${model}/v1/chat/completions`;
+  return await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ model, ...body }),
+    signal
+  });
+}
+
+// Direkter Modell-Endpunkt (Fallback, kann CORS-Probleme haben)
 async function hfFetchDirect(payload, signal) {
   const token = payload._token || state.settings.token.trim();
   const { _token, model, ...body } = payload;
@@ -1274,12 +1287,12 @@ async function parseWithAI(messagesPayload, fallbackFn, modelOverride) {
 
   // Vision-Scan: mehrere Strategien nacheinander
   const visionStrategies = [
-    // 1. SmolVLM über Router (HF-eigenes Modell, kein externer Provider nötig)
-    { model: 'HuggingFaceTB/SmolVLM-Instruct',                    fn: hfFetch },
-    // 2. Llama Vision über direkten Endpunkt
-    { model: 'meta-llama/Llama-3.2-11B-Vision-Instruct',          fn: hfFetchDirect },
-    // 3. SmolVLM über direkten Endpunkt
-    { model: 'HuggingFaceTB/SmolVLM-Instruct',                    fn: hfFetchDirect },
+    // 1. SmolVLM über HF Inference API Provider-Pfad (CORS-sicher)
+    { model: 'HuggingFaceTB/SmolVLM-Instruct',           fn: hfFetchVision },
+    // 2. Llama Vision über HF Inference API Provider-Pfad
+    { model: 'meta-llama/Llama-3.2-11B-Vision-Instruct', fn: hfFetchVision },
+    // 3. SmolVLM über direkten Endpunkt (letzter Versuch)
+    { model: 'HuggingFaceTB/SmolVLM-Instruct',           fn: hfFetchDirect },
   ];
 
   for (const { model, fn } of visionStrategies) {
