@@ -1285,14 +1285,11 @@ async function parseWithAI(messagesPayload, fallbackFn, modelOverride) {
     return;
   }
 
-  // Vision-Scan: mehrere Strategien nacheinander
+  // Vision-Scan: allgemeiner Router → Together AI / Fireworks / DeepInfra
   const visionStrategies = [
-    // 1. SmolVLM über HF Inference API Provider-Pfad (CORS-sicher)
-    { model: 'HuggingFaceTB/SmolVLM-Instruct',           fn: hfFetchVision },
-    // 2. Llama Vision über HF Inference API Provider-Pfad
-    { model: 'meta-llama/Llama-3.2-11B-Vision-Instruct', fn: hfFetchVision },
-    // 3. SmolVLM über direkten Endpunkt (letzter Versuch)
-    { model: 'HuggingFaceTB/SmolVLM-Instruct',           fn: hfFetchDirect },
+    { model: 'meta-llama/Llama-3.2-11B-Vision-Instruct', fn: hfFetch },
+    { model: 'Qwen/Qwen2-VL-7B-Instruct',                fn: hfFetch },
+    { model: 'HuggingFaceTB/SmolVLM-Instruct',           fn: hfFetch },
   ];
 
   const errors = [];
