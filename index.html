@@ -551,6 +551,19 @@ let _cookChecked = {};
 // Temp state for fixed meal day toggles
 let _fixedDaysSelection = ['all'];
 
+// Direkter Modell-Endpunkt (für Vision-Modelle, umgeht Provider-Beschränkungen)
+async function hfFetchDirect(payload, signal) {
+  const token = payload._token || state.settings.token.trim();
+  const { _token, model, ...body } = payload;
+  const url = `https://api-inference.huggingface.co/models/${model}/v1/chat/completions`;
+  return await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ model, ...body }),
+    signal
+  });
+}
+
 async function hfFetch(payload, signal) {
   const token = payload._token || state.settings.token.trim();
   const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
@@ -1223,9 +1236,13 @@ async function parseWithAI(messagesPayload, fallbackFn, modelOverride) {
     if (fallbackFn) fallbackFn();
     return;
   }
+  // Vision-Scans nutzen direkten Endpunkt (kein Router nötig)
+  const isVision = !!modelOverride;
+  const fetchFn = isVision ? hfFetchDirect : hfFetch;
+
   const tryModel = async (model) => {
     showScanStatus(`🔍 KI erkennt Rezept… (${model.split('/').pop()})`);
-    const resp = await hfFetch({
+    const resp = await fetchFn({
       _token: token,
       model,
       messages: messagesPayload,
@@ -1245,15 +1262,14 @@ async function parseWithAI(messagesPayload, fallbackFn, modelOverride) {
     showScanStatus('✅ Rezept erkannt – bitte prüfen');
   };
 
-  const primaryModel   = modelOverride || state.settings.hfModel;
-  const fallbackModel  = 'Qwen/Qwen2-VL-7B-Instruct';
+  const primaryModel  = modelOverride || state.settings.hfModel;
+  const fallbackModel = 'HuggingFaceTB/SmolVLM-Instruct';
 
   try {
     await tryModel(primaryModel);
   } catch(e) {
     console.error('Primärmodell fehlgeschlagen:', e.message);
-    if (modelOverride && modelOverride !== fallbackModel) {
-      // Vision-Scan: Fallback auf Qwen
+    if (isVision && primaryModel !== fallbackModel) {
       try {
         showScanStatus('⚠️ Erstes Modell fehlgeschlagen, versuche Alternative…');
         await tryModel(fallbackModel);
