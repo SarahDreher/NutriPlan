@@ -384,6 +384,7 @@ if ('serviceWorker' in navigator) {
       <div class="field" id="recipe-photo-field">
         <label>Foto (optional)</label>
         <div id="recipe-photo-preview"></div>
+        <div id="recipe-scan-status" style="display:none;margin-top:8px;font-size:13px;text-align:center;padding:10px;border-radius:10px"></div>
       </div>
       <button class="btn-gold" onclick="saveRecipe()" style="margin-top:8px">Rezept speichern</button>
     </div>
@@ -1153,8 +1154,7 @@ function renderRecipePhotoPreview() {
       <span style="font-size:30px">📷</span>
       <span style="font-size:14px;font-weight:600;color:var(--text)">Rezeptfoto auswählen oder aufnehmen</span>
       <span style="font-size:12px;color:var(--muted);text-align:center">Aus Fotobibliothek, Kamera oder Dateien · KI erkennt Zutaten &amp; Zubereitung automatisch</span>
-    </div>
-    <div id="recipe-scan-status" style="display:none;margin-top:8px;font-size:13px;text-align:center"></div>`;
+    </div>`;
   }
 }
 
@@ -1174,7 +1174,19 @@ function showScanStatus(msg, isError) {
   if (!el) return;
   el.style.display = '';
   el.textContent = msg;
-  el.style.color = isError ? 'var(--bronze)' : msg.startsWith('✅') ? 'var(--green)' : 'var(--muted)';
+  if (isError) {
+    el.style.color = 'var(--bronze)';
+    el.style.background = 'rgba(200,80,80,.1)';
+    el.style.border = '1px solid rgba(200,80,80,.3)';
+  } else if (msg.startsWith('✅')) {
+    el.style.color = 'var(--green)';
+    el.style.background = 'rgba(80,200,120,.1)';
+    el.style.border = '1px solid rgba(80,200,120,.3)';
+  } else {
+    el.style.color = 'var(--muted)';
+    el.style.background = 'none';
+    el.style.border = 'none';
+  }
 }
 
 // Gemeinsame Funktion: befüllt alle Rezeptfelder aus geparsten Daten
@@ -1211,11 +1223,11 @@ async function parseWithAI(messagesPayload, fallbackFn, modelOverride) {
     if (fallbackFn) fallbackFn();
     return;
   }
-  showScanStatus('🔍 KI erkennt Rezept…');
-  try {
+  const tryModel = async (model) => {
+    showScanStatus(`🔍 KI erkennt Rezept… (${model.split('/').pop()})`);
     const resp = await hfFetch({
       _token: token,
-      model: modelOverride || state.settings.hfModel,
+      model,
       messages: messagesPayload,
       max_tokens: 2000,
       temperature: 0.2,
@@ -1223,16 +1235,36 @@ async function parseWithAI(messagesPayload, fallbackFn, modelOverride) {
     });
     if (!resp.ok) {
       const errText = await resp.text().catch(() => '');
-      throw new Error(`Status ${resp.status}: ${errText.slice(0,100)}`);
+      throw new Error(`Status ${resp.status}: ${errText.slice(0,200)}`);
     }
     const data = await resp.json();
     const content = data.choices?.[0]?.message?.content || '';
+    if (!content) throw new Error('Leere Antwort vom Modell');
     const parsed = parseVisionResponse(content);
     fillRecipeFields(parsed);
     showScanStatus('✅ Rezept erkannt – bitte prüfen');
+  };
+
+  const primaryModel   = modelOverride || state.settings.hfModel;
+  const fallbackModel  = 'Qwen/Qwen2-VL-7B-Instruct';
+
+  try {
+    await tryModel(primaryModel);
   } catch(e) {
-    console.error('KI-Parse Fehler:', e);
-    showScanStatus('❌ KI-Erkennung fehlgeschlagen: ' + e.message.slice(0,60), true);
+    console.error('Primärmodell fehlgeschlagen:', e.message);
+    if (modelOverride && modelOverride !== fallbackModel) {
+      // Vision-Scan: Fallback auf Qwen
+      try {
+        showScanStatus('⚠️ Erstes Modell fehlgeschlagen, versuche Alternative…');
+        await tryModel(fallbackModel);
+        return;
+      } catch(e2) {
+        console.error('Fallback-Modell fehlgeschlagen:', e2.message);
+        showScanStatus('❌ ' + e2.message, true);
+      }
+    } else {
+      showScanStatus('❌ ' + e.message, true);
+    }
     if (fallbackFn) fallbackFn();
   }
 }
