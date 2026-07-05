@@ -1236,11 +1236,10 @@ async function parseWithAI(messagesPayload, fallbackFn, modelOverride) {
     if (fallbackFn) fallbackFn();
     return;
   }
-  // Vision-Scans nutzen direkten Endpunkt (kein Router nötig)
   const isVision = !!modelOverride;
-  const fetchFn = isVision ? hfFetchDirect : hfFetch;
 
-  const tryModel = async (model) => {
+  // Versuche ein Modell mit gegebenem fetch-Funktion
+  const tryModel = async (model, fetchFn) => {
     showScanStatus(`🔍 KI erkennt Rezept… (${model.split('/').pop()})`);
     const resp = await fetchFn({
       _token: token,
@@ -1262,27 +1261,45 @@ async function parseWithAI(messagesPayload, fallbackFn, modelOverride) {
     showScanStatus('✅ Rezept erkannt – bitte prüfen');
   };
 
-  const primaryModel  = modelOverride || state.settings.hfModel;
-  const fallbackModel = 'HuggingFaceTB/SmolVLM-Instruct';
-
-  try {
-    await tryModel(primaryModel);
-  } catch(e) {
-    console.error('Primärmodell fehlgeschlagen:', e.message);
-    if (isVision && primaryModel !== fallbackModel) {
-      try {
-        showScanStatus('⚠️ Erstes Modell fehlgeschlagen, versuche Alternative…');
-        await tryModel(fallbackModel);
-        return;
-      } catch(e2) {
-        console.error('Fallback-Modell fehlgeschlagen:', e2.message);
-        showScanStatus('❌ ' + e2.message, true);
-      }
-    } else {
+  if (!isVision) {
+    // Normale Textgenerierung → Router
+    try {
+      await tryModel(modelOverride || state.settings.hfModel, hfFetch);
+    } catch(e) {
       showScanStatus('❌ ' + e.message, true);
+      if (fallbackFn) fallbackFn();
     }
-    if (fallbackFn) fallbackFn();
+    return;
   }
+
+  // Vision-Scan: mehrere Strategien nacheinander
+  const visionStrategies = [
+    // 1. SmolVLM über Router (HF-eigenes Modell, kein externer Provider nötig)
+    { model: 'HuggingFaceTB/SmolVLM-Instruct',                    fn: hfFetch },
+    // 2. Llama Vision über direkten Endpunkt
+    { model: 'meta-llama/Llama-3.2-11B-Vision-Instruct',          fn: hfFetchDirect },
+    // 3. SmolVLM über direkten Endpunkt
+    { model: 'HuggingFaceTB/SmolVLM-Instruct',                    fn: hfFetchDirect },
+  ];
+
+  for (const { model, fn } of visionStrategies) {
+    try {
+      await tryModel(model, fn);
+      return; // Erfolg
+    } catch(e) {
+      console.warn(`Versuch fehlgeschlagen (${model}):`, e.message);
+      if (e.message.includes('Load failed') || e.message.includes('NetworkError')) {
+        // CORS/Netzwerk-Fehler – nächste Strategie
+        showScanStatus('⚠️ Verbindungsproblem, versuche Alternative…');
+      } else if (e.message.includes('provider')) {
+        showScanStatus('⚠️ Provider nicht verfügbar, versuche Alternative…');
+      }
+    }
+  }
+
+  // Alle Strategien fehlgeschlagen
+  showScanStatus('❌ Foto-Scan nicht verfügbar. Bitte Rezept manuell eingeben oder Provider unter huggingface.co/settings/inference-providers aktivieren.', true);
+  if (fallbackFn) fallbackFn();
 }
 
 async function scanRecipePhoto(file) {
@@ -1291,8 +1308,9 @@ async function scanRecipePhoto(file) {
 
   let base64;
   try {
+    // Klein halten (400px, 0.6) damit iOS Safari die Anfrage nicht abbricht
     base64 = await new Promise((resolve, reject) =>
-      resizeImageToBase64(file, 1024, 0.82, resolve, reject)
+      resizeImageToBase64(file, 400, 0.6, resolve, reject)
     );
   } catch(e) {
     showScanStatus('❌ Bild konnte nicht geladen werden: ' + (e || 'Unbekannter Fehler'), true);
