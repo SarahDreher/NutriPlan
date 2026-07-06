@@ -369,13 +369,16 @@ if ('serviceWorker' in navigator) {
         </select>
       </div>
       <div class="field-row"><span>Kalorien (gesamt)</span>
-        <div class="stepper"><button class="stepper-btn" onclick="stepRecipe('calories',-50)">−</button><span class="stepper-val" id="r-cal-val">400</span><button class="stepper-btn" onclick="stepRecipe('calories',50)">+</button></div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="number" id="r-cal-val" value="400" min="50" max="5000" step="50" style="width:80px;padding:8px;border-radius:10px;border:1.5px solid var(--border);background:var(--elevated);color:var(--text);font-size:15px;text-align:center">
+          <button onclick="estimateCaloriesWithAI()" style="padding:7px 11px;background:var(--gold);color:#000;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer" title="KI schätzt Kalorien anhand der Zutaten">🤖</button>
+        </div>
       </div>
       <div class="field-row"><span>Portionen</span>
-        <div class="stepper"><button class="stepper-btn" onclick="stepRecipe('servings',-1)">−</button><span class="stepper-val" id="r-srv-val">1</span><button class="stepper-btn" onclick="stepRecipe('servings',1)">+</button></div>
+        <input type="number" id="r-srv-val" value="1" min="1" max="20" step="1" style="width:80px;padding:8px;border-radius:10px;border:1.5px solid var(--border);background:var(--elevated);color:var(--text);font-size:15px;text-align:center">
       </div>
       <div class="field-row"><span>Zubereitungszeit (Min.)</span>
-        <div class="stepper"><button class="stepper-btn" onclick="stepRecipe('prep',-5)">−</button><span class="stepper-val" id="r-prep-val">30</span><button class="stepper-btn" onclick="stepRecipe('prep',5)">+</button></div>
+        <input type="number" id="r-prep-val" value="30" min="1" max="600" step="5" style="width:80px;padding:8px;border-radius:10px;border:1.5px solid var(--border);background:var(--elevated);color:var(--text);font-size:15px;text-align:center">
       </div>
       <div class="field" style="margin-top:14px"><label>Zutaten (eine pro Zeile) *</label><textarea id="r-ingredients" placeholder="80g Haferflocken&#10;250ml Hafermilch&#10;100g Heidelbeeren"></textarea></div>
       <div class="field"><label>Zubereitung</label><textarea id="r-instructions" placeholder="Schritt 1: ...&#10;Schritt 2: ..."></textarea></div>
@@ -1094,18 +1097,27 @@ function renderRecipes() {
     groups[cat].push(r);
   }
 
-  let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+  const searchVal = window._recipeSearch || '';
+  let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
     <div style="font-size:22px;font-weight:700">Meine Rezepte</div>
     <div style="display:flex;gap:8px">
       <button style="padding:10px 12px;background:var(--elevated);border:none;border-radius:14px;color:var(--text);font-size:13px;font-weight:600;cursor:pointer" onclick="document.getElementById('pdf-file-input').click()">📄 PDF</button>
       <button class="btn-gold" style="width:auto;padding:10px 18px" onclick="openAddRecipe()">+ Neu</button>
     </div>
+  </div>
+  <div style="margin-bottom:14px">
+    <input type="search" placeholder="🔍 Rezepte suchen…" value="${searchVal.replace(/"/g,'&quot;')}"
+      oninput="window._recipeSearch=this.value;renderRecipes()"
+      style="width:100%;box-sizing:border-box;padding:10px 14px;border-radius:14px;border:1.5px solid var(--border);background:var(--elevated);color:var(--text);font-size:15px">
   </div>`;
 
+  const q = searchVal.toLowerCase().trim();
   for (const [cat, recipes] of Object.entries(groups)) {
+    const filtered = q ? recipes.filter(r => r.name.toLowerCase().includes(q)) : recipes;
+    if (!filtered.length) continue;
     const m = MEAL_META[cat] || MEAL_META.any;
     html += `<div class="cat-label">${m.icon} ${m.label}</div>`;
-    for (const r of recipes) {
+    for (const r of filtered) {
       const photoTop = r.photo ? `<img class="recipe-card-photo" src="${r.photo}" alt="">` : '';
       html += `<div style="background:var(--card);border-radius:12px;margin-bottom:10px;cursor:pointer;overflow:hidden" onclick="openRecipeDetail('${r.id}')">
         ${photoTop}
@@ -1124,15 +1136,17 @@ function renderRecipes() {
 }
 
 function openAddRecipe(existingRecipeId) {
-  _recipeForm = { calories: 400, servings: 1, prep: 30 };
   document.getElementById('r-name').value = '';
   document.getElementById('r-cat').value = 'any';
   document.getElementById('r-ingredients').value = '';
   document.getElementById('r-instructions').value = '';
   document.getElementById('r-notes').value = '';
-  document.getElementById('r-cal-val').textContent = '400';
-  document.getElementById('r-srv-val').textContent = '1';
-  document.getElementById('r-prep-val').textContent = '30';
+  document.getElementById('r-cal-val').value = '400';
+  document.getElementById('r-srv-val').value = '1';
+  document.getElementById('r-prep-val').value = '30';
+  // Scan-Status aus vorherigem Vorgang ausblenden
+  const scanEl = document.getElementById('recipe-scan-status');
+  if (scanEl) { scanEl.style.display = 'none'; scanEl.textContent = ''; }
   window._recipePhotoData = null;
   window._editRecipeId = null;
   // Prefill if editing existing
@@ -1145,12 +1159,9 @@ function openAddRecipe(existingRecipeId) {
       document.getElementById('r-ingredients').value = (r.ingredients||[]).join('\n');
       document.getElementById('r-instructions').value = r.instructions || '';
       document.getElementById('r-notes').value = r.notes || '';
-      _recipeForm.calories = r.calories;
-      _recipeForm.servings = r.servings;
-      _recipeForm.prep = r.prepTimeMinutes;
-      document.getElementById('r-cal-val').textContent = r.calories;
-      document.getElementById('r-srv-val').textContent = r.servings;
-      document.getElementById('r-prep-val').textContent = r.prepTimeMinutes;
+      document.getElementById('r-cal-val').value = r.calories;
+      document.getElementById('r-srv-val').value = r.servings;
+      document.getElementById('r-prep-val').value = r.prepTimeMinutes;
       window._recipePhotoData = r.photo || null;
     }
   }
@@ -1225,19 +1236,16 @@ function fillRecipeFields(parsed) {
   const steps = toText(parsed.steps);
   if (steps) document.getElementById('r-instructions').value = steps;
   if (parsed.calories && !isNaN(parsed.calories)) {
-    const cal = Math.max(50, Math.min(3000, Math.round(+parsed.calories / 50) * 50));
-    _recipeForm.calories = cal;
-    document.getElementById('r-cal-val').textContent = cal;
+    const cal = Math.max(50, Math.min(5000, Math.round(+parsed.calories / 50) * 50));
+    document.getElementById('r-cal-val').value = cal;
   }
   if (parsed.duration && !isNaN(parsed.duration)) {
-    const dur = Math.max(5, Math.min(300, Math.round(+parsed.duration / 5) * 5));
-    _recipeForm.prep = dur;
-    document.getElementById('r-prep-val').textContent = dur;
+    const dur = Math.max(1, Math.min(600, Math.round(+parsed.duration / 5) * 5));
+    document.getElementById('r-prep-val').value = dur;
   }
   if (parsed.servings && !isNaN(parsed.servings)) {
-    const srv = Math.max(1, Math.min(10, Math.round(+parsed.servings)));
-    _recipeForm.servings = srv;
-    document.getElementById('r-srv-val').textContent = srv;
+    const srv = Math.max(1, Math.min(20, Math.round(+parsed.servings)));
+    document.getElementById('r-srv-val').value = srv;
   }
 }
 
@@ -1431,11 +1439,54 @@ function resizeImageToBase64(file, maxSize, quality, callback, errCallback) {
 }
 
 function stepRecipe(field, delta) {
-  const limits = { calories: [50,3000,50], servings: [1,10,1], prep: [5,300,5] };
+  // stepRecipe bleibt für Kompatibilität, wird aber nicht mehr per UI aufgerufen
+  const limits = { calories: [50,5000,50], servings: [1,20,1], prep: [1,600,5] };
   const ids = { calories: 'r-cal-val', servings: 'r-srv-val', prep: 'r-prep-val' };
   const [min, max] = limits[field];
-  _recipeForm[field] = Math.max(min, Math.min(max, _recipeForm[field] + delta));
-  document.getElementById(ids[field]).textContent = _recipeForm[field];
+  const cur = parseInt(document.getElementById(ids[field]).value) || 0;
+  document.getElementById(ids[field]).value = Math.max(min, Math.min(max, cur + delta));
+}
+
+async function estimateCaloriesWithAI() {
+  const ingredients = document.getElementById('r-ingredients').value.trim();
+  const name = document.getElementById('r-name').value.trim();
+  if (!ingredients) { alert('Bitte zuerst Zutaten eingeben.'); return; }
+  const token = state.settings.token?.trim();
+  if (!token) { alert('Kein HuggingFace-Token in den Einstellungen.'); return; }
+
+  const btn = document.querySelector('[onclick="estimateCaloriesWithAI()"]');
+  if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
+
+  const prompt = `Schätze die Gesamtkalorien (kcal) für folgendes Rezept.
+Rezeptname: ${name || 'Unbekannt'}
+Zutaten:
+${ingredients}
+
+Antworte NUR mit einer einzigen Zahl (die geschätzten Gesamtkalorien für das gesamte Rezept, nicht pro Portion). Keine Erklärung, nur die Zahl.`;
+
+  try {
+    const resp = await hfFetch({
+      _token: token,
+      model: state.settings.hfModel,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 20,
+      temperature: 0.1,
+      stream: false
+    });
+    if (!resp.ok) throw new Error('Status ' + resp.status);
+    const data = await resp.json();
+    const text = data.choices?.[0]?.message?.content || '';
+    const cal = parseInt(text.replace(/[^\d]/g, ''));
+    if (cal && cal > 50 && cal < 20000) {
+      document.getElementById('r-cal-val').value = cal;
+    } else {
+      alert('KI konnte keine sinnvolle Zahl schätzen. Bitte manuell eingeben.');
+    }
+  } catch(e) {
+    alert('Fehler: ' + e.message);
+  } finally {
+    if (btn) { btn.textContent = '🤖'; btn.disabled = false; }
+  }
 }
 
 function saveRecipe() {
@@ -1445,9 +1496,9 @@ function saveRecipe() {
   const recipeData = {
     name,
     category: document.getElementById('r-cat').value,
-    calories: _recipeForm.calories,
-    servings: _recipeForm.servings,
-    prepTimeMinutes: _recipeForm.prep,
+    calories: Math.max(50, parseInt(document.getElementById('r-cal-val').value) || 400),
+    servings: Math.max(1, parseInt(document.getElementById('r-srv-val').value) || 1),
+    prepTimeMinutes: Math.max(1, parseInt(document.getElementById('r-prep-val').value) || 30),
     ingredients: ingredientText.split('\n').map(s=>s.trim()).filter(Boolean),
     instructions: document.getElementById('r-instructions').value.trim(),
     notes: document.getElementById('r-notes').value.trim(),
