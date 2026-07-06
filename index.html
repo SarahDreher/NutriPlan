@@ -1107,7 +1107,7 @@ function renderRecipes() {
   </div>
   <div style="margin-bottom:14px">
     <input type="search" placeholder="🔍 Rezepte suchen…" value="${searchVal.replace(/"/g,'&quot;')}"
-      oninput="window._recipeSearch=this.value;renderRecipes()"
+      oninput="window._recipeSearch=this.value;window._restoreSearchFocus=true;renderRecipes()"
       style="width:100%;box-sizing:border-box;padding:10px 14px;border-radius:14px;border:1.5px solid var(--border);background:var(--elevated);color:var(--text);font-size:15px">
   </div>`;
 
@@ -1133,6 +1133,12 @@ function renderRecipes() {
     }
   }
   c.innerHTML = html;
+  // Fokus nach Suche wiederherstellen
+  if (window._restoreSearchFocus) {
+    window._restoreSearchFocus = false;
+    const si = c.querySelector('input[type=search]');
+    if (si) { si.focus(); const l = si.value.length; si.setSelectionRange(l, l); }
+  }
 }
 
 function openAddRecipe(existingRecipeId) {
@@ -1457,12 +1463,19 @@ async function estimateCaloriesWithAI() {
   const btn = document.querySelector('[onclick="estimateCaloriesWithAI()"]');
   if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
 
-  const prompt = `Schätze die Gesamtkalorien (kcal) für folgendes Rezept.
+  const prompt = `Berechne die Gesamtkalorien (kcal) für das folgende Rezept.
+
+Wichtige Regeln:
+- Beachte die GENAUE MENGE jeder Zutat (z.B. 50g ≠ 100g)
+- Typische Richtwerte: Mehl ~340kcal/100g, Zucker ~400kcal/100g, Butter ~740kcal/100g, Öl ~900kcal/100g, Ei ~155kcal/100g (~80kcal pro Ei), Vollmilch ~64kcal/100ml, Halbfettmilch 1,5% ~46kcal/100ml, Hafermilch ~45kcal/100ml, Haferflocken ~370kcal/100g, gepufftes Getreide ~370kcal/100g, Obst ~50kcal/100g, Fleisch ~150-250kcal/100g
+- Rechne: Menge × kcal_pro_100g / 100 für jede Zutat
+- Addiere alle Werte zur Gesamtsumme
+
 Rezeptname: ${name || 'Unbekannt'}
 Zutaten:
 ${ingredients}
 
-Antworte NUR mit einer einzigen Zahl (die geschätzten Gesamtkalorien für das gesamte Rezept, nicht pro Portion). Keine Erklärung, nur die Zahl.`;
+Antworte NUR mit einer einzigen ganzen Zahl (Gesamtkalorien des gesamten Rezepts). Keine Erklärung, kein Text, nur die Zahl.`;
 
   try {
     const resp = await hfFetch({
@@ -2135,7 +2148,7 @@ function renderSettings() {
       Kostenlos auf <strong style="color:var(--gold)">huggingface.co</strong> → Settings → Access Tokens → Read Token erstellen.
     </p>
     <div class="token-row">
-      <input type="${tokenVisible?'text':'password'}" id="token-input" placeholder="hf_..." value="${s.token}" oninput="setSetting('token',this.value)" autocapitalize="none" autocorrect="off">
+      <input type="${tokenVisible?'text':'password'}" id="token-input" placeholder="hf_..." value="${s.token}" oninput="state.settings.token=this.value;save()" autocapitalize="none" autocorrect="off" spellcheck="false">
       <button class="eye-btn" onclick="toggleTokenVis()">${tokenVisible?'🙈':'👁'}</button>
     </div>
     ${s.token ? `<div class="badge green" style="margin-top:8px;display:inline-flex">✓ Token gespeichert</div>` : ''}
