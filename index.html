@@ -316,6 +316,18 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
+<!-- MODAL: Mahlzeit tauschen -->
+<div class="modal-overlay" id="modal-swap-meal" onclick="closeModal('modal-swap-meal')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <span class="modal-title">Mahlzeit ersetzen</span>
+      <button class="modal-close" onclick="closeModal('modal-swap-meal')">✕</button>
+    </div>
+    <div class="modal-body" id="modal-swap-body"></div>
+  </div>
+</div>
+
 <!-- MODALS -->
 <div class="modal-overlay" id="modal-day" onclick="closeModal('modal-day')">
   <div class="modal" onclick="event.stopPropagation()">
@@ -379,6 +391,13 @@ if ('serviceWorker' in navigator) {
       </div>
       <div class="field-row"><span>Zubereitungszeit (Min.)</span>
         <input type="number" id="r-prep-val" value="30" min="1" max="600" step="5" style="width:80px;padding:8px;border-radius:10px;border:1.5px solid var(--border);background:var(--elevated);color:var(--text);font-size:15px;text-align:center">
+      </div>
+      <div class="field-row">
+        <div>
+          <span>Reicht für Folgetage</span>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Reste für wie viele weitere Tage?</div>
+        </div>
+        <input type="number" id="r-leftovers-val" value="0" min="0" max="6" step="1" style="width:60px;padding:8px;border-radius:10px;border:1.5px solid var(--border);background:var(--elevated);color:var(--text);font-size:15px;text-align:center">
       </div>
       <div class="field" style="margin-top:14px"><label>Zutaten (eine pro Zeile) *</label><textarea id="r-ingredients" placeholder="80g Haferflocken&#10;250ml Hafermilch&#10;100g Heidelbeeren"></textarea></div>
       <div class="field"><label>Zubereitung</label><textarea id="r-instructions" placeholder="Schritt 1: ...&#10;Schritt 2: ..."></textarea></div>
@@ -519,6 +538,8 @@ let state = {
   plan: null,
   shopping: [],
   numberOfDays: 7,
+  planStartDate: null,
+  pantry: '',
   // ÄNDERUNG 1: Mahlzeiten-Gedächtnis
   mealHistory: [],
   // ÄNDERUNG 2: Eigene Einkaufsartikel
@@ -736,6 +757,18 @@ function renderPlan() {
         <button class="stepper-btn" onclick="changeDays(1)">+</button>
       </div>
     </div>
+    <div class="field-row" style="margin:10px 0">
+      <span style="font-size:15px">Plan startet am</span>
+      <input type="date" id="plan-start-date" value="${state.planStartDate || new Date().toISOString().slice(0,10)}"
+        oninput="state.planStartDate=this.value;save()"
+        style="padding:7px 10px;border-radius:10px;border:1.5px solid var(--border);background:var(--elevated);color:var(--text);font-size:14px">
+    </div>
+    <div class="field" style="margin:10px 0 4px">
+      <label style="font-size:14px;font-weight:600">🥫 Vorräte (soll KI einplanen)</label>
+      <textarea id="plan-pantry" placeholder="z.B. Zucchini, Hühnerbrust, Pasta, Reste vom Vortag…" rows="2"
+        oninput="state.pantry=this.value;save()"
+        style="margin-top:6px;font-size:13px">${state.pantry || ''}</textarea>
+    </div>
     ${(() => {
       const sm = state.settings.selectedMeals || ['breakfast','lunch','dinner'];
       const MCAL = {breakfast:300,lunch:400,dinner:400,snack:100};
@@ -822,7 +855,9 @@ function renderDayCard(day, hasDivider = false) {
         <div class="meal-type">${MEAL_META[m.type]?.label || m.type}${m.linkedRecipeId ? ' 📖' : ''}</div>
         <div class="meal-name" style="${m.cooked?'text-decoration:line-through;color:var(--muted)':''}">${m.name}</div>
       </div>
-      <span class="meal-kcal">${m.calories} kcal</span>
+      <span class="meal-kcal" style="font-size:12px">${m.calories} kcal</span>
+      <button onclick="event.stopPropagation();openSwapMeal(${day.dayNumber},'${m.id}','${m.type}')"
+        style="background:none;border:1px solid var(--divider);border-radius:10px;color:var(--muted);font-size:14px;padding:4px 7px;cursor:pointer;flex-shrink:0" title="Mahlzeit ersetzen">🔄</button>
     </div>`).join('');
 
   return `<div style="padding:14px 16px;${day.cooked?'opacity:0.65;':''}${hasDivider?'border-bottom:1px solid rgba(201,171,110,.15);':''}">
@@ -844,6 +879,117 @@ function renderDayCard(day, hasDivider = false) {
       </button>
     </div>
   </div>`;
+}
+
+function openSwapMeal(dayNum, mealId, mealType) {
+  const day = state.plan?.days.find(d => d.dayNumber === dayNum);
+  const meal = day?.meals.find(m => m.id === mealId);
+  if (!meal) return;
+
+  const matchingRecipes = (state.recipes || []).filter(r =>
+    r.category === mealType || r.category === 'any'
+  );
+  const mealLabel = MEAL_META[mealType]?.label || mealType;
+
+  let html = `<div style="margin-bottom:14px">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:4px">${mealLabel} – Tag ${dayNum}</div>
+    <div style="font-size:15px;font-weight:600">${meal.name}</div>
+  </div>
+  <button onclick="swapMealWithAI(${dayNum},'${mealId}')"
+    style="width:100%;padding:13px;background:rgba(201,171,110,.1);border:1px solid var(--gold);border-radius:14px;color:var(--gold);font-size:15px;font-weight:600;cursor:pointer;margin-bottom:10px">
+    ✨ KI-Vorschlag generieren
+  </button>
+  <div id="swap-ai-status" style="display:none;font-size:13px;text-align:center;padding:8px;color:var(--muted)"></div>`;
+
+  if (matchingRecipes.length) {
+    html += `<div style="font-size:13px;font-weight:600;color:var(--muted);margin:12px 0 8px">AUS REZEPTSAMMLUNG</div>`;
+    for (const r of matchingRecipes) {
+      const kcal = Math.round(r.calories / (r.servings || 1));
+      html += `<div onclick="swapMealWithRecipe(${dayNum},'${mealId}','${r.id}')"
+        style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:var(--elevated);border-radius:12px;margin-bottom:8px;cursor:pointer">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600">${r.name}</div>
+          <div style="font-size:12px;color:var(--muted)">🔥 ${kcal} kcal · ⏱ ${r.prepTimeMinutes} Min.</div>
+        </div>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>`;
+    }
+  } else {
+    html += `<div style="font-size:13px;color:var(--muted);text-align:center;padding:10px">Keine passenden Rezepte gespeichert</div>`;
+  }
+
+  document.getElementById('modal-swap-body').innerHTML = html;
+  window._swapContext = { dayNum, mealId, mealType };
+  openModal('modal-swap-meal');
+}
+
+async function swapMealWithAI(dayNum, mealId) {
+  const day = state.plan?.days.find(d => d.dayNumber === dayNum);
+  const meal = day?.meals.find(m => m.id === mealId);
+  if (!meal) return;
+
+  const token = state.settings.token?.trim();
+  if (!token) { alert('Kein Token in den Einstellungen.'); return; }
+
+  const statusEl = document.getElementById('swap-ai-status');
+  if (statusEl) { statusEl.style.display = ''; statusEl.textContent = '⏳ KI denkt nach…'; }
+
+  const mealLabel = MEAL_META[meal.type]?.label || meal.type;
+  const targetCal = meal.calories;
+
+  const prompt = `Schlage eine Alternative für folgende Mahlzeit vor:
+Mahlzeit: ${mealLabel}
+Aktuell: ${meal.name} (${targetCal} kcal)
+Ernährungsweise: ${state.settings.diet}
+Jahreszeit: ${currentSeason()}
+
+Antworte NUR mit diesem JSON:
+{"name":"...", "calories":${targetCal}, "ingredients":["..."], "steps":["..."], "nutritionHighlights":"..."}`;
+
+  try {
+    const resp = await hfFetch({
+      _token: token, model: state.settings.hfModel,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 600, temperature: 0.8, stream: false
+    });
+    if (!resp.ok) throw new Error('Status ' + resp.status);
+    const data = await resp.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    const match = content.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('Kein JSON');
+    const suggestion = JSON.parse(match[0]);
+
+    // Mahlzeit ersetzen
+    meal.name = suggestion.name || meal.name;
+    meal.calories = suggestion.calories || meal.calories;
+    meal.ingredients = suggestion.ingredients || meal.ingredients;
+    meal.steps = suggestion.steps || meal.steps;
+    meal.nutritionHighlights = suggestion.nutritionHighlights || '';
+    meal.linkedRecipeId = null;
+    day.totalCalories = day.meals.reduce((s, m) => s + (parseInt(m.calories) || 0), 0);
+    save();
+    closeModal('modal-swap-meal');
+    renderPlan();
+  } catch(e) {
+    if (statusEl) statusEl.textContent = '❌ Fehler: ' + e.message;
+  }
+}
+
+function swapMealWithRecipe(dayNum, mealId, recipeId) {
+  const day = state.plan?.days.find(d => d.dayNumber === dayNum);
+  const meal = day?.meals.find(m => m.id === mealId);
+  const recipe = state.recipes?.find(r => r.id === recipeId);
+  if (!meal || !recipe) return;
+
+  meal.name = recipe.name;
+  meal.calories = Math.round(recipe.calories / (recipe.servings || 1));
+  meal.ingredients = recipe.ingredients || [];
+  meal.steps = recipe.instructions ? [recipe.instructions] : [];
+  meal.linkedRecipeId = recipeId;
+  day.totalCalories = day.meals.reduce((s, m) => s + (parseInt(m.calories) || 0), 0);
+  save();
+  closeModal('modal-swap-meal');
+  renderPlan();
 }
 
 function toggleMealCooked(dayNum, mealId) {
@@ -1098,6 +1244,8 @@ function renderRecipes() {
   }
 
   const searchVal = window._recipeSearch || '';
+  const filterVal = window._recipeFilter || 'all';
+  const filterBtns = [['all','Alle'],['breakfast','🌅'],['lunch','☀️'],['dinner','🌙'],['snack','🍃']];
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
     <div style="font-size:22px;font-weight:700">Meine Rezepte</div>
     <div style="display:flex;gap:8px">
@@ -1105,14 +1253,21 @@ function renderRecipes() {
       <button class="btn-gold" style="width:auto;padding:10px 18px" onclick="openAddRecipe()">+ Neu</button>
     </div>
   </div>
-  <div style="margin-bottom:14px">
+  <div style="margin-bottom:10px">
     <input type="search" placeholder="🔍 Rezepte suchen…" value="${searchVal.replace(/"/g,'&quot;')}"
       oninput="window._recipeSearch=this.value;window._restoreSearchFocus=true;renderRecipes()"
       style="width:100%;box-sizing:border-box;padding:10px 14px;border-radius:14px;border:1.5px solid var(--border);background:var(--elevated);color:var(--text);font-size:15px">
+  </div>
+  <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+    ${filterBtns.map(([key,label]) => `
+      <button onclick="window._recipeFilter='${key}';renderRecipes()"
+        style="padding:7px 14px;border-radius:20px;border:1px solid ${filterVal===key?'var(--gold)':'var(--divider)'};background:${filterVal===key?'rgba(201,171,110,.15)':'none'};color:${filterVal===key?'var(--gold)':'var(--muted)'};font-size:13px;cursor:pointer;font-weight:${filterVal===key?'600':'400'}">${label}</button>
+    `).join('')}
   </div>`;
 
   const q = searchVal.toLowerCase().trim();
   for (const [cat, recipes] of Object.entries(groups)) {
+    if (filterVal !== 'all' && cat !== filterVal) continue;
     const filtered = q ? recipes.filter(r => r.name.toLowerCase().includes(q)) : recipes;
     if (!filtered.length) continue;
     const m = MEAL_META[cat] || MEAL_META.any;
@@ -1150,6 +1305,7 @@ function openAddRecipe(existingRecipeId) {
   document.getElementById('r-cal-val').value = '400';
   document.getElementById('r-srv-val').value = '1';
   document.getElementById('r-prep-val').value = '30';
+  document.getElementById('r-leftovers-val').value = '0';
   // Scan-Status aus vorherigem Vorgang ausblenden
   const scanEl = document.getElementById('recipe-scan-status');
   if (scanEl) { scanEl.style.display = 'none'; scanEl.textContent = ''; }
@@ -1168,6 +1324,7 @@ function openAddRecipe(existingRecipeId) {
       document.getElementById('r-cal-val').value = r.calories;
       document.getElementById('r-srv-val').value = r.servings;
       document.getElementById('r-prep-val').value = r.prepTimeMinutes;
+      document.getElementById('r-leftovers-val').value = r.leftoversForDays || 0;
       window._recipePhotoData = r.photo || null;
     }
   }
@@ -1512,6 +1669,7 @@ function saveRecipe() {
     calories: Math.max(50, parseInt(document.getElementById('r-cal-val').value) || 400),
     servings: Math.max(1, parseInt(document.getElementById('r-srv-val').value) || 1),
     prepTimeMinutes: Math.max(1, parseInt(document.getElementById('r-prep-val').value) || 30),
+    leftoversForDays: Math.max(0, parseInt(document.getElementById('r-leftovers-val').value) || 0),
     ingredients: ingredientText.split('\n').map(s=>s.trim()).filter(Boolean),
     instructions: document.getElementById('r-instructions').value.trim(),
     notes: document.getElementById('r-notes').value.trim(),
@@ -2372,7 +2530,9 @@ const MEAL_TYPE_MAP = {
 };
 
 function normalizePlan(plan) {
-  const start = plan.generatedAt ? new Date(plan.generatedAt) : new Date();
+  const start = plan.startDate ? new Date(plan.startDate)
+    : plan.generatedAt ? new Date(plan.generatedAt)
+    : new Date();
   plan.days.forEach((day, i) => {
     day.dayNumber = i + 1;
     const d = new Date(start);
@@ -2425,8 +2585,14 @@ async function generatePlan() {
   const unplannedCal = unplannedMeals.reduce((s, m) => s + MEAL_CAL_DEFAULT[m], 0);
   const targetCal = Math.max(300, state.settings.calories - unplannedCal);
   const recipeList = state.recipes.length
-    ? state.recipes.map(r => `- ID:${r.id} | ${r.name} (${(MEAL_META[r.category]||MEAL_META.any).label}, ${Math.round(r.calories/(r.servings||1))} kcal) | ${(r.ingredients||[]).slice(0,4).join(', ')}`).join('\n')
+    ? state.recipes.map(r => {
+        const leftovers = r.leftoversForDays > 0 ? ` | Reicht für ${r.leftoversForDays} Folgetage als Reste` : '';
+        return `- ID:${r.id} | ${r.name} (${(MEAL_META[r.category]||MEAL_META.any).label}, ${Math.round(r.calories/(r.servings||1))} kcal)${leftovers} | ${(r.ingredients||[]).slice(0,4).join(', ')}`;
+      }).join('\n')
     : 'Keine.';
+
+  const pantryItems = (state.pantry || '').trim();
+
 
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - 14);
@@ -2505,7 +2671,10 @@ ${historyList}
 FESTE MAHLZEITEN (MÜSSEN eingehalten werden):
 ${fixedMealsList}
 
-VERFÜGBARE REZEPTE AUS DER BIBLIOTHEK (bevorzugt einplanen wenn passend):
+${pantryItems ? `VORRÄTE (müssen vorrangig verbraucht werden):
+${pantryItems}
+
+` : ''}VERFÜGBARE REZEPTE AUS DER BIBLIOTHEK (bevorzugt einplanen wenn passend, bei Resten-Rezepten Folgetage als "Reste von [Name]" einplanen):
 ${recipeList}
 
 AUSGABE-FORMAT (strikt einhalten, kein anderer Text):
@@ -2569,6 +2738,7 @@ Wichtig:
     const plan = JSON.parse(match2[0]);
     if (!plan.days || !Array.isArray(plan.days)) throw new Error('Ungültiges Plan-Format.');
     plan.generatedAt = new Date().toISOString();
+    plan.startDate = state.planStartDate || new Date().toISOString().slice(0,10);
     normalizePlan(plan);
 
     // Aktuellen Plan in Verlauf sichern
