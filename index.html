@@ -1855,18 +1855,16 @@ async function handlePDFImport(file) {
 function renderShopping() {
   const c = document.getElementById('shopping-content');
   if (!state.plan && !state.customItems?.length) {
-    c.innerHTML = `<div class="empty-state"><div class="empty-icon">🛒</div><div class="empty-title">Noch kein Plan</div><div class="empty-text">Erstelle zuerst einen Essensplan, dann wird hier der Einkaufszettel automatisch generiert.</div></div>
-    ${renderCustomItemsSection()}`;
+    c.innerHTML = `${renderCustomItemsSection()}<div class="empty-state"><div class="empty-icon">🛒</div><div class="empty-title">Noch kein Plan</div><div class="empty-text">Erstelle zuerst einen Essensplan, dann wird hier der Einkaufszettel automatisch generiert.</div></div>`;
     return;
   }
   if (!state.shopping?.length && state.plan) {
-    c.innerHTML = `<div class="empty-state">
+    c.innerHTML = `${renderCustomItemsSection()}<div class="empty-state">
       <div class="empty-icon">🛒</div>
       <div class="empty-title">Einkaufszettel erstellen</div>
       <div class="empty-text">Alle Zutaten aus deinem Plan werden automatisch zusammengestellt.</div>
       <button class="btn-gold" style="margin-top:8px;width:auto;padding:12px 28px" onclick="openShoppingFilter()">✨ Jetzt erstellen</button>
-    </div>
-    ${renderCustomItemsSection()}`;
+    </div>`;
     return;
   }
   const customItems = state.customItems || [];
@@ -1884,8 +1882,9 @@ function renderShopping() {
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
     <div style="font-size:22px;font-weight:700">Einkaufszettel</div>
     <button class="btn-ghost" onclick="openShoppingFilter()">↺ Neu</button>
-  </div>
-  <div class="card" style="margin-bottom:14px">
+  </div>`;
+  html += renderCustomItemsSection();
+  html += `<div class="card" style="margin-bottom:14px">
     <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:8px">
       <span>${done} von ${total} besorgt</span><span style="color:var(--gold);font-weight:600">${Math.round(pct)}%</span>
     </div>
@@ -1910,9 +1909,6 @@ function renderShopping() {
     customChecked.forEach(item => { html += customShopRow(item); });
     html += `</div>`;
   }
-
-  // Eingabeformular für eigene Artikel
-  html += renderCustomItemsSection();
 
   c.innerHTML = html;
 }
