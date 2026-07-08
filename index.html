@@ -1101,12 +1101,12 @@ function openCookModal(dayNum, mealId) {
   window._cookPortions = defaultPortions;
   window._cookIngredients = ingredients;
 
-  // Zubereitungsschritte: zuerst meal.steps (KI-generiert), dann recipe.instructions als Fallback
+  // Zubereitungsschritte: bei verlinktem Rezept IMMER Rezeptdaten verwenden
   let steps = [];
-  if (Array.isArray(meal.steps) && meal.steps.length) {
-    steps = meal.steps;
-  } else if (recipe?.instructions) {
+  if (recipe?.instructions) {
     steps = recipe.instructions.split('\n').map(s => s.trim()).filter(Boolean);
+  } else if (Array.isArray(meal.steps) && meal.steps.length) {
+    steps = meal.steps;
   } else if (meal.instructions) {
     steps = Array.isArray(meal.instructions)
       ? meal.instructions
@@ -2577,6 +2577,21 @@ function currentSeason() {
 
 const MEAL_CAL_DEFAULTS = { breakfast: 300, lunch: 400, dinner: 400, snack: 100 };
 
+// Verknüpfte Rezepte prüfen: Rezept-Typ muss zum Mahlzeit-Typ passen
+function validatePlanRecipes(plan) {
+  plan.days.forEach(day => {
+    day.meals.forEach(meal => {
+      if (!meal.linkedRecipeId) return;
+      const recipe = (state.recipes || []).find(r => r.id === meal.linkedRecipeId);
+      if (!recipe) { meal.linkedRecipeId = null; return; }
+      // Rezept darf nur für seinen eigenen Typ oder 'any' verwendet werden
+      if (recipe.category !== 'any' && recipe.category !== meal.type) {
+        meal.linkedRecipeId = null; // Verlinkung entfernen, Mahlzeit bleibt aber erhalten
+      }
+    });
+  });
+}
+
 function applyFixedMealsToPlan(plan) {
   const wdKeys = ['sun','mon','tue','wed','thu','fri','sat'];
   const typeOrder = ['breakfast','lunch','dinner','snack'];
@@ -2800,8 +2815,8 @@ Wichtig:
 - Erstelle GENAU ${nDays} Tage (Tag 1 bis Tag ${nDays})
 - Nur diese Mahlzeiten pro Tag: ${mealNames}
 - Kalorien pro Tag (nur KI-geplante Mahlzeiten, ohne feste): ca. ${targetCalAfterFixed} kcal
-- recipeId nur setzen wenn eine passende Bibliotheks-Rezept-ID existiert (exakt wie angegeben)
-- Rezepte aus der Bibliothek NUR für den angegebenen Mahlzeit-Typ verwenden (z.B. Frühstücksrezepte nur zum Frühstück, Mittagsrezepte nur zum Mittagessen)
+- recipeId nur setzen wenn Rezept-Typ EXAKT mit der Mahlzeit übereinstimmt (Frühstücksrezept → nur bei Frühstück, Mittagsrezept → nur bei Mittagessen, Abendessen → nur bei Abendessen). Bei Typ "Flexibel" ist jede Mahlzeit erlaubt.
+- Niemals ein Abendessen-Rezept beim Mittagessen oder Frühstück einsetzen
 - steps: mindestens 2-3 konkrete Zubereitungsschritte
 - Kalorien so auf die Mahlzeiten verteilen, dass die Tagessumme ca. ${targetCal} kcal ergibt
 - Abwechslungsreich, lecker, alltagstauglich`;
@@ -2839,6 +2854,7 @@ Wichtig:
     plan.generatedAt = new Date().toISOString();
     plan.startDate = state.planStartDate || new Date().toISOString().slice(0,10);
     normalizePlan(plan);
+    validatePlanRecipes(plan);    // Falsch verlinkte Rezepte bereinigen
     applyFixedMealsToPlan(plan);  // Feste Mahlzeiten garantiert einsetzen
 
     // Aktuellen Plan in Verlauf sichern
