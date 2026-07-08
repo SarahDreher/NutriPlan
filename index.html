@@ -2604,17 +2604,42 @@ async function generatePlan() {
     .slice(-50)
     .join(', ') || 'keine';
 
-  const fixedMealsList = (state.fixedMeals || []).length
-    ? (state.fixedMeals || []).map(fm => {
-        const daysLabel = fm.days.includes('all') ? 'täglich'
-          : fm.days.map(d => ({mon:'Mo',tue:'Di',wed:'Mi',thu:'Do',fri:'Fr',sat:'Sa',sun:'So'}[d]||d)).join(', ');
-        let detail = fm.description;
-        if (fm.recipeId) {
-          const r = (state.recipes||[]).find(r => r.id === fm.recipeId);
-          if (r) detail = r.name;
-        }
-        return `- ${fm.mealType} (${daysLabel}): ${detail}`;
-      }).join('\n')
+  // Wochentage der Plantage berechnen
+  const _weekdayKeys = ['sun','mon','tue','wed','thu','fri','sat'];
+  const _weekdayNames = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+  const _startDate = new Date(state.planStartDate || new Date().toISOString().slice(0,10));
+
+  // Pro Tag: welche festen Mahlzeiten gelten, und wie viele kcal sind bereits verplant
+  let totalFixedCalAcrossDays = 0;
+  const perDayFixedLines = [];
+  for (let i = 0; i < nDays; i++) {
+    const d = new Date(_startDate);
+    d.setDate(d.getDate() + i);
+    const wdKey = _weekdayKeys[d.getDay()];
+    const wdName = _weekdayNames[d.getDay()];
+    const mealsToday = (state.fixedMeals || []).filter(fm =>
+      fm.days.includes('all') || fm.days.includes(wdKey)
+    );
+    if (!mealsToday.length) continue;
+    let fixedCalToday = 0;
+    const descs = mealsToday.map(fm => {
+      let detail = fm.description;
+      let kcal = MEAL_CAL_DEFAULT[fm.mealType] || 300;
+      if (fm.recipeId) {
+        const r = (state.recipes||[]).find(r => r.id === fm.recipeId);
+        if (r) { detail = r.name; kcal = Math.round(r.calories / (r.servings || 1)); }
+      }
+      fixedCalToday += kcal;
+      return `${mealLabelMap[fm.mealType]||fm.mealType}: "${detail}" (${kcal} kcal)`;
+    }).join(', ');
+    totalFixedCalAcrossDays += fixedCalToday;
+    perDayFixedLines.push(`  Tag ${i+1} (${wdName}): FEST → ${descs} → verbleibend für KI: ca. ${Math.max(100, targetCal - fixedCalToday)} kcal`);
+  }
+  const avgFixedCalPerDay = nDays > 0 ? Math.round(totalFixedCalAcrossDays / nDays) : 0;
+  const targetCalAfterFixed = Math.max(200, targetCal - avgFixedCalPerDay);
+
+  const fixedMealsList = perDayFixedLines.length
+    ? perDayFixedLines.join('\n')
     : 'Keine.';
 
   const mainMealLine = {
@@ -2653,11 +2678,19 @@ async function generatePlan() {
     ? `- Hinweis: ${unplannedMeals.map(m => mealLabelMap[m]).join(' & ')} (zusammen ca. ${unplannedCal} kcal) werden außerhalb dieses Plans gegessen. Bitte nur ${targetCal} kcal auf die geplanten Mahlzeiten verteilen.`
     : '';
 
+  // Tages-Übersicht für Prompt (Tag N = Wochentag)
+  const dayOverview = Array.from({length: nDays}, (_, i) => {
+    const d = new Date(_startDate); d.setDate(d.getDate() + i);
+    return `Tag ${i+1} = ${_weekdayNames[d.getDay()]}`;
+  }).join(', ');
+
   const prompt = `Du bist ein professioneller Ernährungsberater. Erstelle einen Essensplan für genau ${nDays} ${nDays===1?'Tag':'Tage'} für eine Person.
+
+TAGE: ${dayOverview}
 
 VORGABEN:
 - Tageskalorienbedarf gesamt: ${state.settings.calories} kcal
-- Kalorien für die geplanten Mahlzeiten: ca. ${targetCal} kcal
+- Kalorien für KI-geplante Mahlzeiten: ca. ${targetCalAfterFixed} kcal (nach Abzug fester Mahlzeiten)
 - Mahlzeiten pro Tag: ${selectedMeals.length} (${mealNames})
 ${unplannedNote}
 - Ernährungsweise: ${state.settings.diet}
@@ -2670,7 +2703,7 @@ ${sharedPersonsInfo ? `GEMEINSAME MAHLZEITEN – andere Haushaltsmitglieder esse
 ZULETZT GEGESSEN (letzte 2 Wochen, bitte Abwechslung sicherstellen):
 ${historyList}
 
-FESTE MAHLZEITEN (MÜSSEN eingehalten werden):
+FESTE MAHLZEITEN (MÜSSEN EXAKT SO in den Plan übernommen werden – diese Mahlzeiten nicht durch andere ersetzen):
 ${fixedMealsList}
 
 ${pantryItems ? `VORRÄTE (müssen vorrangig verbraucht werden):
@@ -2702,7 +2735,7 @@ Antworte NUR mit einem gültigen JSON-Objekt in exakt diesem Format (${nDays} Ei
 Wichtig:
 - Erstelle GENAU ${nDays} Tage (Tag 1 bis Tag ${nDays})
 - Nur diese Mahlzeiten pro Tag: ${mealNames}
-- Kalorien pro Tag (Tagessumme der geplanten Mahlzeiten): ca. ${targetCal} kcal
+- Kalorien pro Tag (nur KI-geplante Mahlzeiten, ohne feste): ca. ${targetCalAfterFixed} kcal
 - recipeId nur setzen wenn eine passende Bibliotheks-Rezept-ID existiert (exakt wie angegeben)
 - steps: mindestens 2-3 konkrete Zubereitungsschritte
 - Kalorien so auf die Mahlzeiten verteilen, dass die Tagessumme ca. ${targetCal} kcal ergibt
@@ -2760,13 +2793,14 @@ Wichtig:
     const mealNames2 = plan.days.flatMap(d => (d.meals||[]).map(m => m.name));
     state.mealHistory = [...(state.mealHistory||[]), { date: todayStr, meals: mealNames2 }];
     save();
+    isGenerating = false;   // VOR renderPlan setzen, damit kein Spinner mehr
     renderPlan();
   } catch (e) {
     console.error('generatePlan Fehler:', e);
     const msg = e.name === 'AbortError' ? 'Zeitüberschreitung – bitte erneut versuchen.' : e.message;
-    alert('Fehler beim Erstellen des Plans:\n' + msg);
     isGenerating = false;
     renderPlan();
+    alert('Fehler beim Erstellen des Plans:\n' + msg);
   } finally {
     isGenerating = false;
   }
