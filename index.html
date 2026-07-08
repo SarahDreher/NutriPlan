@@ -887,11 +887,9 @@ function openSwapMeal(dayNum, mealId, mealType) {
   const day = state.plan?.days.find(d => d.dayNumber === dayNum);
   const meal = day?.meals.find(m => m.id === mealId);
   if (!meal) return;
-
-  const matchingRecipes = (state.recipes || []).filter(r =>
-    r.category === mealType || r.category === 'any'
-  );
   const mealLabel = MEAL_META[mealType]?.label || mealType;
+
+  window._swapContext = { dayNum, mealId, mealType };
 
   let html = `<div style="margin-bottom:14px">
     <div style="font-size:13px;color:var(--muted);margin-bottom:4px">${mealLabel} – Tag ${dayNum}</div>
@@ -901,28 +899,42 @@ function openSwapMeal(dayNum, mealId, mealType) {
     style="width:100%;padding:13px;background:rgba(201,171,110,.1);border:1px solid var(--gold);border-radius:14px;color:var(--gold);font-size:15px;font-weight:600;cursor:pointer;margin-bottom:10px">
     ✨ KI-Vorschlag generieren
   </button>
-  <div id="swap-ai-status" style="display:none;font-size:13px;text-align:center;padding:8px;color:var(--muted)"></div>`;
-
-  if (matchingRecipes.length) {
-    html += `<div style="font-size:13px;font-weight:600;color:var(--muted);margin:12px 0 8px">AUS REZEPTSAMMLUNG</div>`;
-    for (const r of matchingRecipes) {
-      const kcal = Math.round(r.calories / (r.servings || 1));
-      html += `<div onclick="swapMealWithRecipe(${dayNum},'${mealId}','${r.id}')"
-        style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:var(--elevated);border-radius:12px;margin-bottom:8px;cursor:pointer">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:14px;font-weight:600">${r.name}</div>
-          <div style="font-size:12px;color:var(--muted)">🔥 ${kcal} kcal · ⏱ ${r.prepTimeMinutes} Min.</div>
-        </div>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-      </div>`;
-    }
-  } else {
-    html += `<div style="font-size:13px;color:var(--muted);text-align:center;padding:10px">Keine passenden Rezepte gespeichert</div>`;
-  }
+  <div id="swap-ai-status" style="display:none;font-size:13px;text-align:center;padding:8px;color:var(--muted)"></div>
+  <div style="font-size:13px;font-weight:600;color:var(--muted);margin:12px 0 8px">AUS REZEPTSAMMLUNG</div>
+  <input type="search" placeholder="🔍 Rezept suchen…" id="swap-search"
+    oninput="renderSwapRecipeList(this.value)"
+    style="margin-bottom:10px;font-size:16px">
+  <div id="swap-recipe-list"></div>`;
 
   document.getElementById('modal-swap-body').innerHTML = html;
-  window._swapContext = { dayNum, mealId, mealType };
+  renderSwapRecipeList('');
   openModal('modal-swap-meal');
+}
+
+function renderSwapRecipeList(query) {
+  const { dayNum, mealId, mealType } = window._swapContext || {};
+  const q = (query || '').toLowerCase().trim();
+  const recipes = (state.recipes || []).filter(r =>
+    (r.category === mealType || r.category === 'any') &&
+    (!q || r.name.toLowerCase().includes(q))
+  );
+  const container = document.getElementById('swap-recipe-list');
+  if (!container) return;
+  if (!recipes.length) {
+    container.innerHTML = `<div style="font-size:13px;color:var(--muted);text-align:center;padding:10px">Keine passenden Rezepte gefunden</div>`;
+    return;
+  }
+  container.innerHTML = recipes.map(r => {
+    const kcal = Math.round(r.calories / (r.servings || 1));
+    return `<div onclick="swapMealWithRecipe(${dayNum},'${mealId}','${r.id}')"
+      style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:var(--elevated);border-radius:12px;margin-bottom:8px;cursor:pointer">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:600">${r.name}</div>
+        <div style="font-size:12px;color:var(--muted)">🔥 ${kcal} kcal · ⏱ ${r.prepTimeMinutes} Min.</div>
+      </div>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>`;
+  }).join('');
 }
 
 async function swapMealWithAI(dayNum, mealId) {
@@ -2563,6 +2575,58 @@ function currentSeason() {
   return 'Winter';
 }
 
+const MEAL_CAL_DEFAULTS = { breakfast: 300, lunch: 400, dinner: 400, snack: 100 };
+
+function applyFixedMealsToPlan(plan) {
+  const wdKeys = ['sun','mon','tue','wed','thu','fri','sat'];
+  const typeOrder = ['breakfast','lunch','dinner','snack'];
+  const startDate = new Date(plan.startDate || new Date().toISOString().slice(0,10));
+
+  plan.days.forEach((day, i) => {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + i);
+    const wdKey = wdKeys[d.getDay()];
+
+    const fixedToday = (state.fixedMeals || []).filter(fm =>
+      fm.days.includes('all') || fm.days.includes(wdKey)
+    );
+    if (!fixedToday.length) return;
+
+    for (const fm of fixedToday) {
+      let fixedMeal = {
+        id: crypto.randomUUID(),
+        type: fm.mealType,
+        name: fm.description,
+        calories: MEAL_CAL_DEFAULTS[fm.mealType] || 300,
+        ingredients: [],
+        steps: [],
+        cooked: false,
+        linkedRecipeId: fm.recipeId || null
+      };
+      if (fm.recipeId) {
+        const r = (state.recipes || []).find(r => r.id === fm.recipeId);
+        if (r) {
+          fixedMeal.name = r.name;
+          fixedMeal.calories = Math.round(r.calories / (r.servings || 1));
+          fixedMeal.ingredients = r.ingredients || [];
+          fixedMeal.steps = r.instructions ? r.instructions.split('\n').filter(Boolean) : [];
+        }
+      }
+      // Ersetze vorhandene Mahlzeit des gleichen Typs, oder füge hinzu
+      const idx = day.meals.findIndex(m => m.type === fm.mealType);
+      if (idx >= 0) {
+        day.meals[idx] = fixedMeal;
+      } else {
+        day.meals.push(fixedMeal);
+      }
+    }
+    // Reihenfolge wiederherstellen
+    day.meals.sort((a, b) => typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type));
+    // Kalorien neu berechnen
+    day.totalCalories = day.meals.reduce((s, m) => s + (parseInt(m.calories) || 0), 0);
+  });
+}
+
 async function generatePlan() {
   if (isGenerating) return;
   const token = state.settings.token.trim();
@@ -2737,6 +2801,7 @@ Wichtig:
 - Nur diese Mahlzeiten pro Tag: ${mealNames}
 - Kalorien pro Tag (nur KI-geplante Mahlzeiten, ohne feste): ca. ${targetCalAfterFixed} kcal
 - recipeId nur setzen wenn eine passende Bibliotheks-Rezept-ID existiert (exakt wie angegeben)
+- Rezepte aus der Bibliothek NUR für den angegebenen Mahlzeit-Typ verwenden (z.B. Frühstücksrezepte nur zum Frühstück, Mittagsrezepte nur zum Mittagessen)
 - steps: mindestens 2-3 konkrete Zubereitungsschritte
 - Kalorien so auf die Mahlzeiten verteilen, dass die Tagessumme ca. ${targetCal} kcal ergibt
 - Abwechslungsreich, lecker, alltagstauglich`;
@@ -2774,6 +2839,7 @@ Wichtig:
     plan.generatedAt = new Date().toISOString();
     plan.startDate = state.planStartDate || new Date().toISOString().slice(0,10);
     normalizePlan(plan);
+    applyFixedMealsToPlan(plan);  // Feste Mahlzeiten garantiert einsetzen
 
     // Aktuellen Plan in Verlauf sichern
     if (state.plan && state.plan.days) {
