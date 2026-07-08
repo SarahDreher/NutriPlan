@@ -2571,6 +2571,7 @@ async function generatePlan() {
   isGenerating = true;
   renderPlan();
 
+  try {
   const season = currentSeason();
   const avoided  = state.settings.avoided?.length  ? state.settings.avoided.join(', ')  : 'keine';
   const disliked = state.settings.disliked?.length ? state.settings.disliked.join(', ') : 'keine';
@@ -2594,7 +2595,7 @@ async function generatePlan() {
     : 'Keine.';
 
   const pantryItems = (state.pantry || '').trim();
-
+  const nDays = state.numberOfDays || 7;
 
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - 14);
@@ -2673,7 +2674,6 @@ async function generatePlan() {
       return infos.length ? `${mealLabel} (gemeinsam mit ${others.map(p=>p.name).join(', ')}): ${infos.join(' | ')}` : null;
     }).filter(Boolean).join('\n');
 
-  const nDays = state.numberOfDays || 7;
   const unplannedNote = unplannedCal > 0
     ? `- Hinweis: ${unplannedMeals.map(m => mealLabelMap[m]).join(' & ')} (zusammen ca. ${unplannedCal} kcal) werden außerhalb dieses Plans gegessen. Bitte nur ${targetCal} kcal auf die geplanten Mahlzeiten verteilen.`
     : '';
@@ -2741,7 +2741,6 @@ Wichtig:
 - Kalorien so auf die Mahlzeiten verteilen, dass die Tagessumme ca. ${targetCal} kcal ergibt
 - Abwechslungsreich, lecker, alltagstauglich`;
 
-  try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 90000);
     let resp;
