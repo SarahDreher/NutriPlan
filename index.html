@@ -1868,10 +1868,10 @@ function renderShopping() {
     return;
   }
   const customItems = state.customItems || [];
-  const shopOpen    = (state.shopping || []).filter(i => !i.checked);
-  const shopChecked = (state.shopping || []).filter(i =>  i.checked);
-  const customOpen    = customItems.filter(i => !i.checked);
-  const customChecked = customItems.filter(i =>  i.checked);
+  const shopOpen    = sortByCategory((state.shopping || []).filter(i => !i.checked));
+  const shopChecked = sortByCategory((state.shopping || []).filter(i =>  i.checked));
+  const customOpen    = sortByCategory(customItems.filter(i => !i.checked));
+  const customChecked = sortByCategory(customItems.filter(i =>  i.checked));
   const open    = [...shopOpen, ...customOpen];
   const checked = [...shopChecked, ...customChecked];
   const total   = (state.shopping || []).length + customItems.length;
@@ -1950,6 +1950,36 @@ function deleteCustomItem(id) {
   state.customItems = (state.customItems || []).filter(i => i.id !== id);
   save();
   renderShopping();
+}
+
+// Warengruppen-Sortierung (unsichtbar — nur für Reihenfolge)
+function shopCategory(name) {
+  const n = (name || '').toLowerCase();
+  const cats = [
+    [0,  ['apfel','birne','banane','erdbeere','himbeere','heidelbeere','blaubeere','kirsche','pflaume','pfirsich','mango','ananas','melone','trauben','zitrone','limette','orange','grapefruit','kiwi','obst','früchte']],
+    [1,  ['karotte','möhre','zwiebel','knoblauch','tomate','gurke','paprika','brokkoli','zucchini','spinat','kohl','blumenkohl','rosenkohl','lauch','porree','sellerie','fenchel','rübe','rote bete','salat','feldsalat','rucola','gemüse','erbsen','bohnen grün','grüne bohnen','mais','avocado','süßkartoffel','kartoffel']],
+    [2,  ['basilikum','petersilie','schnittlauch','koriander','thymian','rosmarin','minze','oregano','kräuter']],
+    [3,  ['hähnchen','hühnchen','hähnchenbrust','hühnerbrust','rindfleisch','schweinefleisch','hackfleisch','hack','wurst','salami','schinken','speck','putenfleisch','pute','lammfleisch','lamm','steak','schnitzel','fleisch']],
+    [4,  ['lachs','thunfisch','forelle','hering','garnelen','shrimps','fischfilet','fisch']],
+    [5,  ['brot','brötchen','toast','ciabatta','baguette','vollkornbrot','backwaren']],
+    [6,  ['mehl','backpulver','hefe','zucker','puderzucker','vanillezucker','kakao','schokolade','haferflocken','müsli','cornflakes','dinkel','haferflock']],
+    [7,  ['nuss','mandel','cashew','walnuss','erdnuss','haselnuss','pistazie','samen','leinsamen','chiasamen','sonnenblumenkern','kürbiskern']],
+    [8,  ['nudeln','pasta','spaghetti','penne','tagliatelle','reis','basmatireis','vollkornreis','quinoa','bulgur','couscous','linsen','kichererbsen','weiße bohnen','kidney']],
+    [9,  ['dosentomaten','tomatendose','passata','tomatenpüree','tomatenmark','konserve','dose']],
+    [10, ['olivenöl','sonnenblumenöl','rapsöl','kokosöl','öl','essig','balsamico','senf','ketchup','mayonnaise','sojasoße','sojasauce','worcester','sriracha','chili','sambal','pesto','brühe','bouillon']],
+    [11, ['salz','pfeffer','paprikapulver','kurkuma','zimt','ingwer','kreuzkümmel','kardamom','muskat','curry','gewürz']],
+    [12, ['milch','joghurt','quark','skyr','käse','mozzarella','parmesan','gouda','brie','feta','butter','sahne','crème fraîche','schmand','frischkäse','ei','eier','kefir']],
+    [13, ['tiefkühl','tk ','gefroren']],
+    [14, ['wasser','mineralwasser','saft','nektar','limonade','getränk']],
+  ];
+  for (const [order, keywords] of cats) {
+    if (keywords.some(k => n.includes(k))) return order;
+  }
+  return 99;
+}
+
+function sortByCategory(items) {
+  return [...items].sort((a, b) => shopCategory(a.name) - shopCategory(b.name));
 }
 
 function shopRow(item) {
