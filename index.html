@@ -23,7 +23,7 @@
   --muted:     #999080;
   --divider:   #333336;
   --radius:    14px;
-  --tab-h:     calc(60px + env(safe-area-inset-bottom));
+  --tab-h:     60px;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, sans-serif; overscroll-behavior: none; }
@@ -43,7 +43,6 @@ body { overflow: hidden; }
   background: #18181B;
   border-top: 1px solid var(--divider);
   display: flex;
-  padding-bottom: env(safe-area-inset-bottom);
   z-index: 100;
 }
 .tab-btn {
@@ -813,7 +812,10 @@ function renderPlan() {
           <div style="font-size:16px;font-weight:700">📅 ${state.plan.days.length}-Tage-Plan</div>
           <div style="font-size:12px;color:var(--muted);margin-top:2px">Erstellt ${planGenDate}${cookedCount > 0 ? ` · <span style="color:var(--green)">✓ ${cookedCount}/${state.plan.days.length} gekocht</span>` : ''}</div>
         </div>
-        <button onclick="deletePlan()" style="background:none;border:1px solid var(--divider);color:var(--muted);border-radius:16px;padding:6px 12px;font-size:12px;cursor:pointer">🗑 Löschen</button>
+        <div style="display:flex;gap:8px">
+          <button onclick="toggleCollapseAll()" style="background:none;border:1px solid var(--divider);color:var(--muted);border-radius:16px;padding:6px 12px;font-size:12px;cursor:pointer" id="collapse-all-btn">${((window._collapsedDays?.size || 0) >= state.plan.days.length) ? '⊕ Alle aufklappen' : '⊖ Alle einklappen'}</button>
+          <button onclick="deletePlan()" style="background:none;border:1px solid var(--divider);color:var(--muted);border-radius:16px;padding:6px 12px;font-size:12px;cursor:pointer">🗑</button>
+        </div>
       </div>
       ${state.plan.days.map((day, i) => renderDayCard(day, i < state.plan.days.length - 1)).join('')}
     </div>`;
@@ -851,7 +853,7 @@ function renderDayCard(day, hasDivider = false) {
   const dateLabel = day.date ? formatDayDate(day.date) : `Tag ${day.dayNumber}`;
 
   let meals = day.meals.map(m => `
-    <div class="meal-row" style="${m.cooked?'opacity:0.55':''}">
+    <div class="meal-row" style="${m.cooked?'opacity:0.55':''};cursor:pointer" onclick="openCookModal(${day.dayNumber},'${m.id}')">
       <span class="meal-icon">${m.cooked ? '✅' : (MEAL_META[m.type]?.icon || '🍴')}</span>
       <div class="meal-info">
         <div class="meal-type">${MEAL_META[m.type]?.label || m.type}${m.linkedRecipeId ? ' 📖' : ''}</div>
@@ -868,8 +870,7 @@ function renderDayCard(day, hasDivider = false) {
       <div class="progress-track"><div class="progress-fill" style="width:${barPct}%;background:${barColor}"></div></div>
     </div>
     ${meals}
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--divider)">
-      <button onclick="openDayModal(${day.dayNumber})" style="background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:0">Details ›</button>
+    <div style="display:flex;justify-content:flex-end;align-items:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--divider)">
       <button onclick="event.stopPropagation();toggleDayCooked(${day.dayNumber})" style="background:${day.cooked?'var(--elevated)':'rgba(80,200,120,.15)'};border:1px solid ${day.cooked?'var(--divider)':'var(--green)'};color:${day.cooked?'var(--muted)':'var(--green)'};border-radius:16px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer">
         ${day.cooked ? '↩ Rückgängig' : '✓ Als gekocht markieren'}
       </button>
@@ -897,6 +898,17 @@ function toggleDayCollapse(dayNum) {
     window._collapsedDays.delete(dayNum);
   } else {
     window._collapsedDays.add(dayNum);
+  }
+  renderPlan();
+}
+
+function toggleCollapseAll() {
+  if (!window._collapsedDays) window._collapsedDays = new Set();
+  const allDays = state.plan?.days || [];
+  if (window._collapsedDays.size >= allDays.length) {
+    window._collapsedDays.clear();
+  } else {
+    allDays.forEach(d => window._collapsedDays.add(d.dayNumber));
   }
   renderPlan();
 }
@@ -1205,6 +1217,30 @@ function toggleStep(i) {
     el.classList.toggle('active', j === i);
     document.getElementById('step-txt-' + j)?.classList.toggle('active', j === i);
   });
+}
+
+// Zutat parsen: führende Zahl + optionale Einheit + Rest
+function parseIngredient(str) {
+  const s = str.trim();
+  const m = s.match(/^(\d+(?:[.,]\d+)?)\s*(g|kg|ml|l|EL|TL|Stück|Stk|Pkg|Pck|Bund|Zehe|Scheiben?|Dose[n]?|Glas|Prise|Tasse|Becher|Portion[en]?|Handvoll|Msp\.?)?\s*(.*)/i);
+  if (m && m[1]) {
+    const name = (m[3] || '').trim() || (m[2] || '').trim();
+    return { qty: parseFloat(m[1].replace(',','.')), unit: (m[2] || '').trim(), name, origStr: s };
+  }
+  return { qty: null, unit: '', name: s, origStr: s };
+}
+
+function ingredientGroupKey(parsed) {
+  // Normalise for grouping: lowercase, strip German plural suffix 'n' from last word
+  const normName = parsed.name.toLowerCase().replace(/n$/, '').trim();
+  const normUnit = parsed.unit.toLowerCase();
+  return normUnit + '|' + normName;
+}
+
+function reconstructIngredient(parsed, totalQty) {
+  if (parsed.qty === null || totalQty === null) return parsed.origStr;
+  const n = Number.isInteger(totalQty) ? totalQty : parseFloat(totalQty.toFixed(1));
+  return [n, parsed.unit, parsed.name].filter(Boolean).join(' ');
 }
 
 function scaleIngredient(ingredientStr, factor) {
@@ -2039,28 +2075,52 @@ function generateShopping(days) {
   if (!plan) return;
   const relevantDays = days === 0 ? plan.days : plan.days.slice(0, days);
   const personCount = state.household?.persons?.length || 1;
+
+  // map: groupKey → { firstParsed, totalQty, days, isShared, factor }
   const map = {};
+
   for (const day of relevantDays) {
     for (const meal of day.meals) {
       const isShared = state.household?.sharedMeals?.[meal.type] === true;
       const factor = isShared ? personCount : 1;
-      for (const ing of (meal.ingredients || [])) {
+      // Prefer linked recipe ingredients (always complete), fall back to meal.ingredients
+      const recipe = (state.recipes || []).find(r => r.id === meal.linkedRecipeId);
+      const ingredients = (recipe?.ingredients?.length ? recipe.ingredients : meal.ingredients) || [];
+
+      for (const ing of ingredients) {
         const origKey = ing.trim();
         if (!origKey) continue;
-        const scaled = scaleIngredient(origKey, factor);
-        if (!map[origKey]) map[origKey] = { scaledName: scaled, days: [], isShared, factor };
-        if (!map[origKey].days.includes(day.dayNumber)) map[origKey].days.push(day.dayNumber);
+        const parsed = parseIngredient(origKey);
+        const gKey = ingredientGroupKey(parsed);
+
+        if (!map[gKey]) {
+          map[gKey] = {
+            firstParsed: parsed,
+            totalQty: parsed.qty !== null ? parsed.qty * factor : null,
+            days: [],
+            isShared,
+            factor
+          };
+        } else {
+          // Addiere Menge, wenn beide eine Zahl haben
+          if (parsed.qty !== null && map[gKey].totalQty !== null) {
+            map[gKey].totalQty += parsed.qty * factor;
+          }
+        }
+        if (!map[gKey].days.includes(day.dayNumber)) map[gKey].days.push(day.dayNumber);
       }
     }
   }
-  state.shopping = Object.entries(map).map(([, info]) => ({
+
+  state.shopping = Object.values(map).map(info => ({
     id: crypto.randomUUID(),
-    name: info.scaledName,
+    name: reconstructIngredient(info.firstParsed, info.totalQty),
     checked: false,
-    days: info.days.sort((a,b)=>a-b),
+    days: info.days.sort((a,b) => a-b),
     isShared: info.isShared,
     personCount: info.factor
   })).sort((a,b) => a.name.localeCompare(b.name, 'de'));
+
   save();
   closeModal('modal-shopping-filter');
   renderShopping();
