@@ -30,7 +30,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 body { overflow: hidden; }
 
 /* ── Layout ── */
-#app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; padding-top: max(env(safe-area-inset-top), 50px); }
+#app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; height: var(--real-h, 100dvh); padding-top: max(env(safe-area-inset-top), 50px); }
 #content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .view { display: none; padding: 16px; animation: fadeIn .18s ease; }
 .view.active { display: block; }
@@ -3050,7 +3050,14 @@ function deletePlanHistory(index) {
 }
 
 // ── App-Start ──────────────────────────────────────────────────────────────
+function setRealHeight() {
+  document.documentElement.style.setProperty('--real-h', window.innerHeight + 'px');
+}
+setRealHeight();
+window.addEventListener('resize', setRealHeight);
+
 document.addEventListener('DOMContentLoaded', () => {
+  setRealHeight();
   load();
   switchTab('plan');
 });
