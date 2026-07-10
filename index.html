@@ -23,7 +23,7 @@
   --muted:     #999080;
   --divider:   #333336;
   --radius:    14px;
-  --tab-h:     60px;
+  --tab-h:     calc(60px + env(safe-area-inset-bottom));
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, sans-serif; overscroll-behavior: none; }
@@ -43,6 +43,8 @@ body { overflow: hidden; }
   background: #18181B;
   border-top: 1px solid var(--divider);
   display: flex;
+  align-items: flex-start;
+  padding-bottom: env(safe-area-inset-bottom);
   z-index: 100;
 }
 .tab-btn {
