@@ -31,14 +31,14 @@ body { overflow: hidden; }
 
 /* ── Layout ── */
 #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; padding-top: max(env(safe-area-inset-top), 50px); }
-#content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: var(--tab-h); }
+#content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .view { display: none; padding: 16px; animation: fadeIn .18s ease; }
 .view.active { display: block; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ── Tab Bar ── */
 #tabbar {
-  position: fixed; bottom: 0; left: 0; right: 0;
+  flex-shrink: 0;
   height: var(--tab-h);
   background: #18181B;
   border-top: 1px solid var(--divider);
@@ -1993,7 +1993,7 @@ function shopCategory(name) {
   const n = (name || '').toLowerCase();
   const cats = [
     [0,  ['apfel','birne','banane','erdbeere','himbeere','heidelbeere','blaubeere','kirsche','pflaume','pfirsich','mango','ananas','melone','trauben','zitrone','limette','orange','grapefruit','kiwi','obst','früchte']],
-    [1,  ['karotte','möhre','zwiebel','knoblauch','tomate','gurke','paprika','brokkoli','zucchini','spinat','kohl','blumenkohl','rosenkohl','lauch','porree','sellerie','fenchel','rübe','rote bete','salat','feldsalat','rucola','gemüse','erbsen','bohnen grün','grüne bohnen','mais','avocado','süßkartoffel','kartoffel']],
+    [1,  ['karotte','möhre','zwiebel','knoblauch','tomate','gurke','paprika','brokkoli','zucchini','spinat','kohl','blumenkohl','rosenkohl','lauch','porree','sellerie','fenchel','rübe','rote bete','salat','feldsalat','rucola','gemüse','erbsen','bohnen grün','grüne bohnen','mais','avocado','süßkartoffel','kartoffel','champignon','pilz','steinpilz','pfifferling','austernpilz','kräuterseitling','shiitake']],
     [2,  ['basilikum','petersilie','schnittlauch','koriander','thymian','rosmarin','minze','oregano','kräuter']],
     [3,  ['hähnchen','hühnchen','hähnchenbrust','hühnerbrust','rindfleisch','schweinefleisch','hackfleisch','hack','wurst','salami','schinken','speck','putenfleisch','pute','lammfleisch','lamm','steak','schnitzel','fleisch']],
     [4,  ['lachs','thunfisch','forelle','hering','garnelen','shrimps','fischfilet','fisch']],
