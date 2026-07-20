@@ -673,6 +673,9 @@ function load() {
     if (ph) state.planHistory = JSON.parse(ph);
   } catch(e) { state.planHistory = []; }
   if (!Array.isArray(state.planHistory)) state.planHistory = [];
+  // Abgelaufene Pläne beim Start bereinigen
+  const _cutoff4w = new Date(); _cutoff4w.setDate(_cutoff4w.getDate() - 28);
+  state.planHistory = state.planHistory.filter(e => new Date(e.savedAt) > _cutoff4w);
   // Migration: mealsPerDay → selectedMeals
   if (!state.settings.selectedMeals) {
     const mp = state.settings.mealsPerDay || 3;
@@ -827,14 +830,8 @@ function renderPlan() {
     </div>`;
   }
 
-  // Plan-Verlauf Button
-  if ((state.planHistory || []).length > 0) {
-    html += `<div style="text-align:center;margin-top:4px">
-      <button onclick="openPlanHistory()" style="background:none;border:1px solid var(--divider);color:var(--muted);border-radius:20px;padding:8px 16px;font-size:13px;cursor:pointer;margin-top:8px">
-        📋 Frühere Pläne (${(state.planHistory || []).length})
-      </button>
-    </div>`;
-  }
+  // Frühere Pläne inline anzeigen
+  html += renderPlanHistoryInline();
 
   c.innerHTML = html;
 }
@@ -899,6 +896,55 @@ function toggleDayCollapse(dayNum) {
   } else {
     window._collapsedDays.add(dayNum);
   }
+  renderPlan();
+}
+
+function renderPlanHistoryInline() {
+  const history = state.planHistory || [];
+  if (!history.length) return '';
+  let out = `<div style="margin-top:8px;margin-bottom:4px;font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.5px">FRÜHERE PLÄNE</div>`;
+  history.forEach((entry, idx) => {
+    const plan = entry.plan;
+    if (!plan?.days?.length) return;
+    const savedDate = new Date(entry.savedAt).toLocaleDateString('de-DE',{day:'2-digit',month:'short',year:'numeric'});
+    const startLabel = plan.days[0]?.date ? formatDayDate(plan.days[0].date) : 'Tag 1';
+    const endLabel   = plan.days[plan.days.length-1]?.date ? formatDayDate(plan.days[plan.days.length-1].date) : `Tag ${plan.days.length}`;
+    const isOpen = (window._historyOpen || new Set()).has(idx);
+    let daysHtml = '';
+    if (isOpen) {
+      daysHtml = plan.days.map(day => {
+        const dateLabel = day.date ? formatDayDate(day.date) : `Tag ${day.dayNumber}`;
+        const mealsHtml = day.meals.map(m =>
+          `<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--divider)">
+            <span>${MEAL_META[m.type]?.icon||'🍴'}</span>
+            <span style="font-size:13px;flex:1;color:var(--text)">${m.name}</span>
+            <span style="font-size:11px;color:var(--muted)">${m.calories} kcal</span>
+          </div>`
+        ).join('');
+        return `<div style="padding:8px 14px;border-bottom:1px solid rgba(255,255,255,.04)">
+          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px">${dateLabel}</div>
+          ${mealsHtml}
+        </div>`;
+      }).join('');
+    }
+    out += `<div style="border:1px solid var(--divider);border-radius:12px;overflow:hidden;margin-bottom:8px;opacity:0.75">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;background:var(--elevated)" onclick="toggleHistoryEntry(${idx})">
+        <div>
+          <span style="font-size:13px;font-weight:600">📅 ${startLabel} – ${endLabel}</span>
+          <span style="font-size:11px;color:var(--muted);margin-left:8px">gespeichert ${savedDate}</span>
+        </div>
+        <span style="color:var(--muted);font-size:14px;transform:rotate(${isOpen?'0':'−90'}deg);display:inline-block;transition:transform .2s">▾</span>
+      </div>
+      ${daysHtml}
+    </div>`;
+  });
+  return out;
+}
+
+function toggleHistoryEntry(idx) {
+  if (!window._historyOpen) window._historyOpen = new Set();
+  if (window._historyOpen.has(idx)) { window._historyOpen.delete(idx); }
+  else { window._historyOpen.add(idx); }
   renderPlan();
 }
 
@@ -2782,13 +2828,15 @@ async function generatePlan() {
   const pantryItems = (state.pantry || '').trim();
   const nDays = state.numberOfDays || 7;
 
+  // Mahlzeiten-History: letzte 4 Wochen aus mealHistory + alle früheren Pläne
   const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 14);
+  cutoff.setDate(cutoff.getDate() - 28);
   state.mealHistory = (state.mealHistory || []).filter(entry => new Date(entry.date) > cutoff);
-  const historyList = (state.mealHistory || [])
-    .flatMap(entry => entry.meals || [])
-    .slice(-50)
-    .join(', ') || 'keine';
+  const historyMeals = new Set([
+    ...(state.mealHistory || []).flatMap(entry => entry.meals || []),
+    ...(state.planHistory || []).flatMap(e => (e.plan?.days||[]).flatMap(d => (d.meals||[]).map(m => m.name)))
+  ]);
+  const historyList = [...historyMeals].slice(-80).join(', ') || 'keine';
 
   // Wochentage der Plantage berechnen
   const _weekdayKeys = ['sun','mon','tue','wed','thu','fri','sat'];
@@ -2885,14 +2933,17 @@ ${unplannedNote}
 - Unbeliebte Lebensmittel (wenn möglich weglassen): ${disliked}
 ${restrictionLines ? `- Mahlzeit-Einschränkungen:\n${restrictionLines}` : ''}
 ${sharedPersonsInfo ? `GEMEINSAME MAHLZEITEN – andere Haushaltsmitglieder essen mit:\n${sharedPersonsInfo}\nBei diesen Mahlzeiten MÜSSEN deren Einschränkungen berücksichtigt werden.\n` : ''}
-ZULETZT GEGESSEN (letzte 2 Wochen, bitte Abwechslung sicherstellen):
+ABWECHSLUNG PFLICHT – DIESE MAHLZEITEN WURDEN BEREITS GEGESSEN UND DÜRFEN NICHT WIEDERHOLT WERDEN:
 ${historyList}
+→ Plane ausschliesslich neue, andere Gerichte. Kein Gericht aus obiger Liste verwenden, auch keine sehr ähnlichen Varianten.
 
 FESTE MAHLZEITEN (MÜSSEN EXAKT SO in den Plan übernommen werden – diese Mahlzeiten nicht durch andere ersetzen):
 ${fixedMealsList}
 
-${pantryItems ? `VORRÄTE (müssen vorrangig verbraucht werden):
+${pantryItems ? `VORRÄTE – ABSOLUTE PFLICHT:
+Folgende Zutaten sind bereits vorhanden und MÜSSEN in den ersten 2-3 Tagen des Plans verbraucht werden. Plane für jede Zutat mindestens eine konkrete Mahlzeit, in der sie als Hauptzutat vorkommt. Diese Zutaten gehören NICHT auf die Einkaufsliste:
 ${pantryItems}
+→ Prüfe nach dem Erstellen: Ist jede Vorratszutat in einer Mahlzeit der ersten Tage enthalten? Wenn nein, korrigiere den Plan.
 
 ` : ''}VERFÜGBARE REZEPTE AUS DER BIBLIOTHEK (bevorzugt einplanen wenn passend, bei Resten-Rezepten Folgetage als "Reste von [Name]" einplanen):
 ${recipeList}
@@ -2925,7 +2976,9 @@ Wichtig:
 - Niemals ein Abendessen-Rezept beim Mittagessen oder Frühstück einsetzen
 - steps: mindestens 2-3 konkrete Zubereitungsschritte
 - Kalorien so auf die Mahlzeiten verteilen, dass die Tagessumme ca. ${targetCal} kcal ergibt
-- Abwechslungsreich, lecker, alltagstauglich`;
+- Maximale Abwechslung: jedes Gericht im Plan soll einzigartig sein, keine Wiederholungen innerhalb des Plans
+- Kreativ und abwechslungsreich – verschiedene Küchen, Zubereitungsarten, Proteinquellen
+${pantryItems ? `- Vorratszutaten aus obiger Liste MÜSSEN in den ersten Tagen verwendet werden` : ''}`;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 90000);
@@ -2939,7 +2992,7 @@ Wichtig:
           { role: 'user', content: prompt }
         ],
         max_tokens: 3500,
-        temperature: 0.7,
+        temperature: 0.9,
         stream: false
       }, controller.signal);
     } finally {
