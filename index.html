@@ -842,39 +842,40 @@ function formatDayDate(dateStr) {
   return d.toLocaleDateString('de-DE', { weekday:'short', day:'2-digit', month:'short' });
 }
 
-function renderDayCard(day, hasDivider = false) {
+function renderDayCard(day, hasDivider = false, histIdx = null) {
   const ratio = day.totalCalories / state.settings.calories;
   const cls = ratio > 1.12 ? 'red' : ratio < 0.88 ? 'gold' : 'green';
   const barPct = Math.min(ratio * 100, 100).toFixed(1);
   const barColor = cls === 'green' ? 'var(--green)' : cls === 'gold' ? 'var(--gold)' : 'var(--red)';
   const dateLabel = day.date ? formatDayDate(day.date) : `Tag ${day.dayNumber}`;
+  const hi = histIdx !== null ? `,${histIdx}` : '';
 
   let meals = day.meals.map(m => `
-    <div class="meal-row" style="${m.cooked?'opacity:0.55':''};cursor:pointer" onclick="openCookModal(${day.dayNumber},'${m.id}')">
+    <div class="meal-row" style="${m.cooked?'opacity:0.55':''};cursor:pointer" onclick="openCookModal(${day.dayNumber},'${m.id}'${hi})">
       <span class="meal-icon">${m.cooked ? '✅' : (MEAL_META[m.type]?.icon || '🍴')}</span>
       <div class="meal-info">
         <div class="meal-type">${MEAL_META[m.type]?.label || m.type}${m.linkedRecipeId ? ' 📖' : ''}</div>
         <div class="meal-name" style="${m.cooked?'text-decoration:line-through;color:var(--muted)':''}">${m.name}</div>
       </div>
       <span class="meal-kcal" style="font-size:12px">${m.calories} kcal</span>
-      <button onclick="event.stopPropagation();openSwapMeal(${day.dayNumber},'${m.id}','${m.type}')"
+      <button onclick="event.stopPropagation();openSwapMeal(${day.dayNumber},'${m.id}','${m.type}'${hi})"
         style="background:none;border:1px solid var(--divider);border-radius:10px;color:var(--muted);font-size:14px;padding:4px 7px;cursor:pointer;flex-shrink:0" title="Mahlzeit ersetzen">🔄</button>
     </div>`).join('');
 
-  const collapsed = (window._collapsedDays || new Set()).has(day.dayNumber);
+  const collapsed = getCollapsedSet(histIdx).has(day.dayNumber);
   const bodyHtml = collapsed ? '' : `
     <div style="margin-bottom:8px">
       <div class="progress-track"><div class="progress-fill" style="width:${barPct}%;background:${barColor}"></div></div>
     </div>
     ${meals}
     <div style="display:flex;justify-content:flex-end;align-items:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--divider)">
-      <button onclick="event.stopPropagation();toggleDayCooked(${day.dayNumber})" style="background:${day.cooked?'var(--elevated)':'rgba(80,200,120,.15)'};border:1px solid ${day.cooked?'var(--divider)':'var(--green)'};color:${day.cooked?'var(--muted)':'var(--green)'};border-radius:16px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer">
+      <button onclick="event.stopPropagation();toggleDayCooked(${day.dayNumber}${hi})" style="background:${day.cooked?'var(--elevated)':'rgba(80,200,120,.15)'};border:1px solid ${day.cooked?'var(--divider)':'var(--green)'};color:${day.cooked?'var(--muted)':'var(--green)'};border-radius:16px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer">
         ${day.cooked ? '↩ Rückgängig' : '✓ Als gekocht markieren'}
       </button>
     </div>`;
 
   return `<div style="padding:14px 16px;${day.cooked?'opacity:0.65;':''}${hasDivider?'border-bottom:1px solid rgba(201,171,110,.15);':''}">
-    <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleDayCollapse(${day.dayNumber})">
+    <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleDayCollapse(${day.dayNumber}${hi})">
       <div style="display:flex;align-items:center;gap:8px">
         <span style="font-size:13px;color:var(--muted);transition:transform .2s;display:inline-block;transform:rotate(${collapsed?'-90deg':'0deg'})"">▾</span>
         <span style="font-size:15px;font-weight:700">${dateLabel}</span>
@@ -889,13 +890,20 @@ function renderDayCard(day, hasDivider = false) {
   </div>`;
 }
 
-function toggleDayCollapse(dayNum) {
-  if (!window._collapsedDays) window._collapsedDays = new Set();
-  if (window._collapsedDays.has(dayNum)) {
-    window._collapsedDays.delete(dayNum);
-  } else {
-    window._collapsedDays.add(dayNum);
-  }
+// Hilfsfunktion: Plan aus state.plan oder planHistory[histIdx]
+function getPlanByIdx(histIdx) {
+  return (histIdx != null) ? (state.planHistory?.[histIdx]?.plan || null) : state.plan;
+}
+// Hilfsfunktion: collapsed-Set je Plan
+function getCollapsedSet(histIdx) {
+  const key = histIdx != null ? '_collapsedDaysH' + histIdx : '_collapsedDays';
+  if (!window[key]) window[key] = new Set();
+  return window[key];
+}
+
+function toggleDayCollapse(dayNum, histIdx) {
+  const set = getCollapsedSet(histIdx ?? null);
+  if (set.has(dayNum)) set.delete(dayNum); else set.add(dayNum);
   renderPlan();
 }
 
@@ -909,34 +917,50 @@ function renderPlanHistoryInline() {
     const savedDate = new Date(entry.savedAt).toLocaleDateString('de-DE',{day:'2-digit',month:'short',year:'numeric'});
     const startLabel = plan.days[0]?.date ? formatDayDate(plan.days[0].date) : 'Tag 1';
     const endLabel   = plan.days[plan.days.length-1]?.date ? formatDayDate(plan.days[plan.days.length-1].date) : `Tag ${plan.days.length}`;
-    const isOpen = (window._historyOpen || new Set()).has(idx);
-    let daysHtml = '';
-    if (isOpen) {
-      daysHtml = plan.days.map(day => {
-        const dateLabel = day.date ? formatDayDate(day.date) : `Tag ${day.dayNumber}`;
-        const mealsHtml = day.meals.map(m =>
-          `<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--divider)">
-            <span>${MEAL_META[m.type]?.icon||'🍴'}</span>
-            <span style="font-size:13px;flex:1;color:var(--text)">${m.name}</span>
-            <span style="font-size:11px;color:var(--muted)">${m.calories} kcal</span>
-          </div>`
-        ).join('');
-        return `<div style="padding:8px 14px;border-bottom:1px solid rgba(255,255,255,.04)">
-          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px">${dateLabel}</div>
-          ${mealsHtml}
-        </div>`;
-      }).join('');
-    }
-    out += `<div style="border:1px solid var(--divider);border-radius:12px;overflow:hidden;margin-bottom:8px;opacity:0.75">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;background:var(--elevated)" onclick="toggleHistoryEntry(${idx})">
-        <div>
-          <span style="font-size:13px;font-weight:600">📅 ${startLabel} – ${endLabel}</span>
-          <span style="font-size:11px;color:var(--muted);margin-left:8px">gespeichert ${savedDate}</span>
+
+    if (idx === 0) {
+      // Erster (neuester) History-Eintrag: vollständig bearbeitbar wie der aktive Plan
+      const cookedCount = plan.days.filter(d => d.cooked).length;
+      out += `<div style="border:1px solid rgba(201,171,110,.25);border-radius:16px;overflow:hidden;margin-bottom:10px">
+        <div style="background:rgba(201,171,110,.06);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(201,171,110,.15)">
+          <div>
+            <div style="font-size:15px;font-weight:700">📅 ${startLabel} – ${endLabel}</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">gespeichert ${savedDate}${cookedCount > 0 ? ` · <span style="color:var(--green)">✓ ${cookedCount}/${plan.days.length} gekocht</span>` : ''}</div>
+          </div>
         </div>
-        <span style="color:var(--muted);font-size:14px;transform:rotate(${isOpen?'0':'−90'}deg);display:inline-block;transition:transform .2s">▾</span>
-      </div>
-      ${daysHtml}
-    </div>`;
+        ${plan.days.map((day, i) => renderDayCard(day, i < plan.days.length - 1, 0)).join('')}
+      </div>`;
+    } else {
+      // Ältere Einträge: kompakte, nur-lesbare Ansicht, aufklappbar
+      const isOpen = (window._historyOpen || new Set()).has(idx);
+      let daysHtml = '';
+      if (isOpen) {
+        daysHtml = plan.days.map(day => {
+          const dateLabel = day.date ? formatDayDate(day.date) : `Tag ${day.dayNumber}`;
+          const mealsHtml = day.meals.map(m =>
+            `<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--divider)">
+              <span>${MEAL_META[m.type]?.icon||'🍴'}</span>
+              <span style="font-size:13px;flex:1;color:var(--text)">${m.name}</span>
+              <span style="font-size:11px;color:var(--muted)">${m.calories} kcal</span>
+            </div>`
+          ).join('');
+          return `<div style="padding:8px 14px;border-bottom:1px solid rgba(255,255,255,.04)">
+            <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px">${dateLabel}</div>
+            ${mealsHtml}
+          </div>`;
+        }).join('');
+      }
+      out += `<div style="border:1px solid var(--divider);border-radius:12px;overflow:hidden;margin-bottom:8px;opacity:0.65">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;background:var(--elevated)" onclick="toggleHistoryEntry(${idx})">
+          <div>
+            <span style="font-size:13px;font-weight:600">📅 ${startLabel} – ${endLabel}</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:8px">gespeichert ${savedDate}</span>
+          </div>
+          <span style="color:var(--muted);font-size:14px;transform:rotate(${isOpen?'0':'-90'}deg);display:inline-block;transition:transform .2s">▾</span>
+        </div>
+        ${daysHtml}
+      </div>`;
+    }
   });
   return out;
 }
@@ -959,19 +983,20 @@ function toggleCollapseAll() {
   renderPlan();
 }
 
-function openSwapMeal(dayNum, mealId, mealType) {
-  const day = state.plan?.days.find(d => d.dayNumber === dayNum);
+function openSwapMeal(dayNum, mealId, mealType, histIdx = null) {
+  const plan = getPlanByIdx(histIdx);
+  const day = plan?.days.find(d => d.dayNumber === dayNum);
   const meal = day?.meals.find(m => m.id === mealId);
   if (!meal) return;
   const mealLabel = MEAL_META[mealType]?.label || mealType;
 
-  window._swapContext = { dayNum, mealId, mealType };
+  window._swapContext = { dayNum, mealId, mealType, histIdx };
 
   let html = `<div style="margin-bottom:14px">
     <div style="font-size:13px;color:var(--muted);margin-bottom:4px">${mealLabel} – Tag ${dayNum}</div>
     <div style="font-size:15px;font-weight:600">${meal.name}</div>
   </div>
-  <button onclick="swapMealWithAI(${dayNum},'${mealId}')"
+  <button onclick="swapMealWithAI(${dayNum},'${mealId}'${histIdx !== null ? `,${histIdx}` : ''})"
     style="width:100%;padding:13px;background:rgba(201,171,110,.1);border:1px solid var(--gold);border-radius:14px;color:var(--gold);font-size:15px;font-weight:600;cursor:pointer;margin-bottom:10px">
     ✨ KI-Vorschlag generieren
   </button>
@@ -988,7 +1013,7 @@ function openSwapMeal(dayNum, mealId, mealType) {
 }
 
 function renderSwapRecipeList(query) {
-  const { dayNum, mealId, mealType } = window._swapContext || {};
+  const { dayNum, mealId, mealType, histIdx } = window._swapContext || {};
   const q = (query || '').toLowerCase().trim();
   const recipes = (state.recipes || []).filter(r =>
     (r.category === mealType || r.category === 'any') &&
@@ -1000,9 +1025,10 @@ function renderSwapRecipeList(query) {
     container.innerHTML = `<div style="font-size:13px;color:var(--muted);text-align:center;padding:10px">Keine passenden Rezepte gefunden</div>`;
     return;
   }
+  const hiArg = histIdx !== null && histIdx !== undefined ? `,'${histIdx}'` : '';
   container.innerHTML = recipes.map(r => {
     const kcal = Math.round(r.calories / (r.servings || 1));
-    return `<div onclick="swapMealWithRecipe(${dayNum},'${mealId}','${r.id}')"
+    return `<div onclick="swapMealWithRecipe(${dayNum},'${mealId}','${r.id}'${hiArg})"
       style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:var(--elevated);border-radius:12px;margin-bottom:8px;cursor:pointer">
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;font-weight:600">${r.name}</div>
@@ -1013,8 +1039,9 @@ function renderSwapRecipeList(query) {
   }).join('');
 }
 
-async function swapMealWithAI(dayNum, mealId) {
-  const day = state.plan?.days.find(d => d.dayNumber === dayNum);
+async function swapMealWithAI(dayNum, mealId, histIdx = null) {
+  const plan = getPlanByIdx(histIdx);
+  const day = plan?.days.find(d => d.dayNumber === dayNum);
   const meal = day?.meals.find(m => m.id === mealId);
   if (!meal) return;
 
@@ -1065,8 +1092,9 @@ Antworte NUR mit diesem JSON:
   }
 }
 
-function swapMealWithRecipe(dayNum, mealId, recipeId) {
-  const day = state.plan?.days.find(d => d.dayNumber === dayNum);
+function swapMealWithRecipe(dayNum, mealId, recipeId, histIdx = null) {
+  const plan = getPlanByIdx(typeof histIdx === 'string' ? parseInt(histIdx) : histIdx);
+  const day = plan?.days.find(d => d.dayNumber === dayNum);
   const meal = day?.meals.find(m => m.id === mealId);
   const recipe = state.recipes?.find(r => r.id === recipeId);
   if (!meal || !recipe) return;
@@ -1082,21 +1110,22 @@ function swapMealWithRecipe(dayNum, mealId, recipeId) {
   renderPlan();
 }
 
-function toggleMealCooked(dayNum, mealId) {
-  const day = state.plan?.days.find(d => d.dayNumber === dayNum);
+function toggleMealCooked(dayNum, mealId, histIdx = null) {
+  const plan = getPlanByIdx(histIdx);
+  const day = plan?.days.find(d => d.dayNumber === dayNum);
   if (!day) return;
   const meal = day.meals.find(m => m.id === mealId);
   if (!meal) return;
   meal.cooked = !meal.cooked;
-  // Automatisch Tag als gekocht markieren wenn alle Mahlzeiten fertig sind
   day.cooked = day.meals.every(m => m.cooked);
   save();
   closeModal('modal-cook');
   renderPlan();
 }
 
-function toggleDayCooked(dayNum) {
-  const day = state.plan?.days.find(d => d.dayNumber === dayNum);
+function toggleDayCooked(dayNum, histIdx = null) {
+  const plan = getPlanByIdx(histIdx);
+  const day = plan?.days.find(d => d.dayNumber === dayNum);
   if (!day) return;
   day.cooked = !day.cooked;
   save();
@@ -1164,8 +1193,9 @@ function openDayModal(dayNum) {
 // ═══════════════════════════════════════════════
 // COOKING MODAL (ÄNDERUNG 3: Zubereitung statt Checkboxen)
 // ═══════════════════════════════════════════════
-function openCookModal(dayNum, mealId) {
-  const day = state.plan?.days.find(d => d.dayNumber === dayNum);
+function openCookModal(dayNum, mealId, histIdx = null) {
+  const plan = getPlanByIdx(histIdx);
+  const day = plan?.days.find(d => d.dayNumber === dayNum);
   const meal = day?.meals.find(m => m.id === mealId);
   if (!meal) return;
 
@@ -1249,7 +1279,7 @@ function openCookModal(dayNum, mealId) {
     html += `<div class="info-box" style="margin-bottom:14px"><span>🌿 ${meal.nutritionHighlights}</span></div>`;
   }
 
-  html += `<button onclick="toggleMealCooked(${dayNum},'${meal.id}')" style="width:100%;background:${meal.cooked?'var(--elevated)':'rgba(80,200,120,.15)'};border:1px solid ${meal.cooked?'var(--divider)':'var(--green)'};color:${meal.cooked?'var(--muted)':'var(--green)'};border-radius:16px;padding:12px;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:8px">
+  html += `<button onclick="toggleMealCooked(${dayNum},'${meal.id}'${histIdx !== null ? `,${histIdx}` : ''})" style="width:100%;background:${meal.cooked?'var(--elevated)':'rgba(80,200,120,.15)'};border:1px solid ${meal.cooked?'var(--divider)':'var(--green)'};color:${meal.cooked?'var(--muted)':'var(--green)'};border-radius:16px;padding:12px;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:8px">
     ${meal.cooked ? '↩ Als ungekocht markieren' : '✓ Mahlzeit als gekocht markieren'}
   </button>`;
 
