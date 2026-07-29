@@ -1980,15 +1980,17 @@ function renderShopping() {
     return;
   }
   const customItems = state.customItems || [];
-  const shopOpen    = sortByCategory((state.shopping || []).filter(i => !i.checked));
-  const shopChecked = sortByCategory((state.shopping || []).filter(i =>  i.checked));
-  const customOpen    = sortByCategory(customItems.filter(i => !i.checked));
-  const customChecked = sortByCategory(customItems.filter(i =>  i.checked));
-  const open    = [...shopOpen, ...customOpen];
-  const checked = [...shopChecked, ...customChecked];
-  const total   = (state.shopping || []).length + customItems.length;
-  const done    = shopChecked.length + customChecked.length;
-  const pct     = total ? (done/total*100).toFixed(1) : 0;
+  const allOpen = sortByCategory([
+    ...(state.shopping || []).filter(i => !i.checked).map(i => ({...i, _src:'plan'})),
+    ...customItems.filter(i => !i.checked).map(i => ({...i, _src:'custom'}))
+  ]);
+  const allChecked = sortByCategory([
+    ...(state.shopping || []).filter(i => i.checked).map(i => ({...i, _src:'plan'})),
+    ...customItems.filter(i => i.checked).map(i => ({...i, _src:'custom'}))
+  ]);
+  const total = allOpen.length + allChecked.length;
+  const done  = allChecked.length;
+  const pct   = total ? (done/total*100).toFixed(1) : 0;
 
   let html = `
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -2003,22 +2005,20 @@ function renderShopping() {
     <div class="progress-track"><div class="progress-fill green" style="width:${pct}%"></div></div>
   </div>`;
 
-  if (open.length) {
+  if (allOpen.length) {
     html += `<div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">NOCH BESORGEN</div>
     <div class="card" style="padding:0;margin-bottom:14px">`;
-    shopOpen.forEach(item => { html += shopRow(item); });
-    customOpen.forEach(item => { html += customShopRow(item); });
+    allOpen.forEach(item => { html += unifiedShopRow(item); });
     html += `</div>`;
   }
 
-  if (checked.length) {
+  if (allChecked.length) {
     html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <span style="font-size:12px;font-weight:600;color:var(--muted)">ERLEDIGT ✓</span>
       <button class="btn-danger" onclick="clearChecked()" style="font-size:12px">Löschen</button>
     </div>
     <div class="card section-faded" style="padding:0;margin-bottom:14px">`;
-    shopChecked.forEach(item => { html += shopRow(item); });
-    customChecked.forEach(item => { html += customShopRow(item); });
+    allChecked.forEach(item => { html += unifiedShopRow(item); });
     html += `</div>`;
   }
 
@@ -2061,6 +2061,64 @@ function toggleCustomItem(id) {
 function deleteCustomItem(id) {
   state.customItems = (state.customItems || []).filter(i => i.id !== id);
   save();
+  renderShopping();
+}
+
+// Einheitliche Einkaufslisten-Zeile (Plan- und Eigenartikel identisch)
+function unifiedShopRow(item) {
+  const isCustom = item._src === 'custom';
+  const toggleFn = isCustom ? `toggleCustomItem('${item.id}')` : `toggleShopItem('${item.id}')`;
+  const isEditing = window._shopEditId === item.id;
+  const dayLabel = !isEditing && item.days?.length
+    ? (item.days.length === 1 ? `Tag ${item.days[0]}` : `Tag ${item.days[0]}–${item.days[item.days.length-1]}`)
+    : '';
+  const nameHtml = isEditing
+    ? `<input id="shop-edit-${item.id}"
+        value="${item.name.replace(/"/g,'&quot;')}"
+        style="flex:1;font-size:14px;background:var(--elevated);border:1px solid var(--gold);border-radius:8px;padding:4px 8px;color:var(--text);min-width:0"
+        onblur="saveShopItemEdit('${item.id}',${isCustom})"
+        onkeydown="if(event.key==='Enter'){saveShopItemEdit('${item.id}',${isCustom});event.preventDefault()}">`
+    : `<div class="shop-name ${item.checked?'done':''}">${item.name}</div>`;
+  return `<div class="shop-row" style="cursor:default">
+    <div onclick="${toggleFn}" style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;cursor:pointer">
+      <div class="check-circle ${item.checked?'done':''}">${item.checked?'✓':''}</div>
+      <div style="flex:1;min-width:0">
+        ${nameHtml}
+        ${dayLabel ? `<div class="shop-days">📅 ${dayLabel}</div>` : ''}
+      </div>
+    </div>
+    <div style="display:flex;gap:2px;flex-shrink:0">
+      ${!isEditing ? `<button onclick="startEditShopItem('${item.id}',${isCustom})"
+        style="background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;padding:2px 5px" title="Umbenennen">✏️</button>` : ''}
+      <button onclick="deleteShopItem('${item.id}',${isCustom})"
+        style="background:none;border:none;color:var(--muted);font-size:19px;cursor:pointer;padding:2px 4px" title="Löschen">×</button>
+    </div>
+  </div>`;
+}
+
+function deleteShopItem(id, isCustom) {
+  if (isCustom) state.customItems = (state.customItems || []).filter(i => i.id !== id);
+  else state.shopping = (state.shopping || []).filter(i => i.id !== id);
+  save(); renderShopping();
+}
+
+function startEditShopItem(id, isCustom) {
+  window._shopEditId = id;
+  renderShopping();
+  setTimeout(() => document.getElementById('shop-edit-' + id)?.focus(), 30);
+}
+
+function saveShopItemEdit(id, isCustom) {
+  const input = document.getElementById('shop-edit-' + id);
+  if (!input) return;
+  const newName = input.value.trim();
+  if (newName) {
+    const list = isCustom ? (state.customItems || []) : (state.shopping || []);
+    const item = list.find(i => i.id === id);
+    if (item) item.name = newName;
+    save();
+  }
+  window._shopEditId = null;
   renderShopping();
 }
 
@@ -2967,7 +3025,19 @@ ABWECHSLUNG PFLICHT – DIESE MAHLZEITEN WURDEN BEREITS GEGESSEN UND DÜRFEN NIC
 ${historyList}
 → Plane ausschliesslich neue, andere Gerichte. Kein Gericht aus obiger Liste verwenden, auch keine sehr ähnlichen Varianten.
 
-FESTE MAHLZEITEN (MÜSSEN EXAKT SO in den Plan übernommen werden – diese Mahlzeiten nicht durch andere ersetzen):
+${(() => {
+    const prevPlan = state.planHistory?.[0]?.plan;
+    if (!prevPlan) return '';
+    const uncooked = prevPlan.days
+      .flatMap(day => day.meals.filter(m => !m.cooked)
+        .map(m => `- ${MEAL_META[m.type]?.label||m.type}: ${m.name} (${m.calories} kcal)`))
+      .slice(0, 12);
+    if (!uncooked.length) return '';
+    return `NICHT GEGESSENE MAHLZEITEN AUS VORHERIGEM PLAN (bitte diese oder sehr ähnliche Mahlzeiten in den neuen Plan einplanen – sie wurden vorbereitet aber nicht gegessen):
+${uncooked.join('\n')}
+
+`;
+  })()}FESTE MAHLZEITEN (MÜSSEN EXAKT SO in den Plan übernommen werden – diese Mahlzeiten nicht durch andere ersetzen):
 ${fixedMealsList}
 
 ${pantryItems ? `VORRÄTE – ABSOLUTE PFLICHT:
