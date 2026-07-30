@@ -2038,8 +2038,8 @@ function renderShopping() {
 
   if (allOpen.length) {
     html += `<div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">NOCH BESORGEN</div>
-    <div class="card" style="padding:0;margin-bottom:14px">`;
-    allOpen.forEach((item, idx) => { html += unifiedShopRow(item, idx, allOpen.length); });
+    <div class="card" id="shop-open-list" style="padding:0;margin-bottom:14px">`;
+    allOpen.forEach(item => { html += unifiedShopRow(item, true); });
     html += `</div>`;
   }
 
@@ -2049,11 +2049,12 @@ function renderShopping() {
       <button class="btn-danger" onclick="clearChecked()" style="font-size:12px">Löschen</button>
     </div>
     <div class="card section-faded" style="padding:0;margin-bottom:14px">`;
-    allChecked.forEach(item => { html += unifiedShopRow(item); });
+    allChecked.forEach(item => { html += unifiedShopRow(item, false); });
     html += `</div>`;
   }
 
   c.innerHTML = html;
+  if (allOpen.length) initShopDrag();
 }
 
 function renderCustomItemsSection() {
@@ -2104,16 +2105,59 @@ function undoLastToggle() {
   renderShopping();
 }
 
-function moveShopItem(id, dir) {
-  const order = window._shopManualOrder;
-  if (!order) return;
-  const idx = order.indexOf(id);
-  if (idx < 0) return;
-  const newIdx = idx + dir;
-  if (newIdx < 0 || newIdx >= order.length) return;
-  order.splice(idx, 1);
-  order.splice(newIdx, 0, id);
-  renderShopping();
+function initShopDrag() {
+  const list = document.getElementById('shop-open-list');
+  if (!list) return;
+  let dragging = null, ghost = null;
+
+  list.querySelectorAll('.shop-drag-row').forEach(row => {
+    const handle = row.querySelector('.drag-handle');
+    if (!handle) return;
+
+    handle.addEventListener('touchstart', e => {
+      e.preventDefault();
+      dragging = row;
+      const rect = row.getBoundingClientRect();
+      ghost = row.cloneNode(true);
+      ghost.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;z-index:9999;opacity:0.92;background:var(--elevated);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.55);pointer-events:none;`;
+      document.body.appendChild(ghost);
+      row.style.opacity = '0.35';
+    }, { passive: false });
+  });
+
+  function onMove(e) {
+    if (!dragging || !ghost) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    ghost.style.top = (touch.clientY - 28) + 'px';
+
+    // Find row under finger (ignoring ghost)
+    ghost.style.display = 'none';
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    ghost.style.display = '';
+    const target = el && el.closest('.shop-drag-row');
+    if (target && target !== dragging) {
+      const rect = target.getBoundingClientRect();
+      if (touch.clientY < rect.top + rect.height / 2) {
+        list.insertBefore(dragging, target);
+      } else {
+        list.insertBefore(dragging, target.nextSibling);
+      }
+    }
+  }
+
+  function onEnd() {
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onEnd);
+    if (ghost) { ghost.remove(); ghost = null; }
+    if (dragging) { dragging.style.opacity = '1'; dragging = null; }
+    // Sync DOM order → _shopManualOrder
+    window._shopManualOrder = [...list.querySelectorAll('.shop-drag-row')].map(r => r.dataset.id);
+    renderShopping();
+  }
+
+  document.addEventListener('touchmove', onMove, { passive: false });
+  document.addEventListener('touchend', onEnd);
 }
 
 function deleteCustomItem(id) {
@@ -2123,11 +2167,10 @@ function deleteCustomItem(id) {
 }
 
 // Einheitliche Einkaufslisten-Zeile (Plan- und Eigenartikel identisch)
-function unifiedShopRow(item, idx, total) {
+function unifiedShopRow(item, isOpenList) {
   const isCustom = item._src === 'custom';
   const toggleFn = isCustom ? `toggleCustomItem('${item.id}')` : `toggleShopItem('${item.id}')`;
   const isEditing = window._shopEditId === item.id;
-  const showOrder = (typeof idx === 'number') && !item.checked;
   const dayLabel = !isEditing && item.days?.length
     ? (item.days.length === 1 ? `Tag ${item.days[0]}` : `Tag ${item.days[0]}–${item.days[item.days.length-1]}`)
     : '';
@@ -2138,7 +2181,11 @@ function unifiedShopRow(item, idx, total) {
         onblur="saveShopItemEdit('${item.id}',${isCustom})"
         onkeydown="if(event.key==='Enter'){saveShopItemEdit('${item.id}',${isCustom});event.preventDefault()}">`
     : `<div class="shop-name ${item.checked?'done':''}">${item.name}</div>`;
-  return `<div class="shop-row" style="cursor:default">
+  const dragHandle = isOpenList && !isEditing
+    ? `<div class="drag-handle" style="display:flex;align-items:center;padding:0 6px 0 2px;color:var(--muted);font-size:20px;cursor:grab;touch-action:none;user-select:none;flex-shrink:0">⠿</div>`
+    : '';
+  return `<div class="${isOpenList ? 'shop-drag-row' : ''} shop-row" ${isOpenList ? `data-id="${item.id}"` : ''} style="cursor:default">
+    ${dragHandle}
     <div ${isEditing ? '' : `onclick="${toggleFn}"`} style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;cursor:${isEditing?'default':'pointer'}">
       <div class="check-circle ${item.checked?'done':''}">${item.checked?'✓':''}</div>
       <div style="flex:1;min-width:0">
@@ -2147,10 +2194,6 @@ function unifiedShopRow(item, idx, total) {
       </div>
     </div>
     <div style="display:flex;gap:2px;flex-shrink:0;align-items:center">
-      ${showOrder && !isEditing ? `<div style="display:flex;flex-direction:column;gap:0">
-        <button onclick="event.stopPropagation();moveShopItem('${item.id}',-1)" ${idx===0?'disabled':''} style="background:none;border:none;color:${idx===0?'var(--divider)':'var(--gold)'};font-size:16px;cursor:${idx===0?'default':'pointer'};padding:2px 6px;line-height:1;opacity:${idx===0?'0.3':'1'}">▲</button>
-        <button onclick="event.stopPropagation();moveShopItem('${item.id}',1)" ${idx===total-1?'disabled':''} style="background:none;border:none;color:${idx===total-1?'var(--divider)':'var(--gold)'};font-size:16px;cursor:${idx===total-1?'default':'pointer'};padding:2px 6px;line-height:1;opacity:${idx===total-1?'0.3':'1'}">▼</button>
-      </div>` : ''}
       ${!isEditing ? `<button onclick="startEditShopItem('${item.id}',${isCustom})"
         style="background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;padding:2px 5px" title="Umbenennen">✏️</button>` : ''}
       <button onclick="deleteShopItem('${item.id}',${isCustom})"
