@@ -2110,28 +2110,11 @@ function initShopDrag() {
   if (!list) return;
   let dragging = null, ghost = null;
 
-  list.querySelectorAll('.shop-drag-row').forEach(row => {
-    const handle = row.querySelector('.drag-handle');
-    if (!handle) return;
-
-    handle.addEventListener('touchstart', e => {
-      e.preventDefault();
-      dragging = row;
-      const rect = row.getBoundingClientRect();
-      ghost = row.cloneNode(true);
-      ghost.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;z-index:9999;opacity:0.92;background:var(--elevated);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.55);pointer-events:none;`;
-      document.body.appendChild(ghost);
-      row.style.opacity = '0.35';
-    }, { passive: false });
-  });
-
   function onMove(e) {
     if (!dragging || !ghost) return;
     e.preventDefault();
     const touch = e.touches[0];
     ghost.style.top = (touch.clientY - 28) + 'px';
-
-    // Find row under finger (ignoring ghost)
     ghost.style.display = 'none';
     const el = document.elementFromPoint(touch.clientX, touch.clientY);
     ghost.style.display = '';
@@ -2151,13 +2134,26 @@ function initShopDrag() {
     document.removeEventListener('touchend', onEnd);
     if (ghost) { ghost.remove(); ghost = null; }
     if (dragging) { dragging.style.opacity = '1'; dragging = null; }
-    // Sync DOM order → _shopManualOrder
     window._shopManualOrder = [...list.querySelectorAll('.shop-drag-row')].map(r => r.dataset.id);
     renderShopping();
   }
 
-  document.addEventListener('touchmove', onMove, { passive: false });
-  document.addEventListener('touchend', onEnd);
+  list.querySelectorAll('.shop-drag-row').forEach(row => {
+    const handle = row.querySelector('.drag-handle');
+    if (!handle) return;
+    handle.addEventListener('touchstart', e => {
+      e.preventDefault();
+      dragging = row;
+      const rect = row.getBoundingClientRect();
+      ghost = row.cloneNode(true);
+      ghost.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;z-index:9999;opacity:0.92;background:var(--elevated);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.55);pointer-events:none;`;
+      document.body.appendChild(ghost);
+      row.style.opacity = '0.35';
+      // Listener erst jetzt anhängen — nicht bei jedem Touch
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchend', onEnd);
+    }, { passive: false });
+  });
 }
 
 function deleteCustomItem(id) {
