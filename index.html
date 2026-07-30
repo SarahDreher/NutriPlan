@@ -2134,7 +2134,7 @@ function unifiedShopRow(item, idx, total) {
   const nameHtml = isEditing
     ? `<input id="shop-edit-${item.id}"
         value="${item.name.replace(/"/g,'&quot;')}"
-        style="flex:1;font-size:14px;background:var(--elevated);border:1px solid var(--gold);border-radius:8px;padding:4px 8px;color:var(--text);min-width:0"
+        style="flex:1;font-size:16px;background:var(--elevated);border:1px solid var(--gold);border-radius:8px;padding:4px 8px;color:var(--text);min-width:0"
         onblur="saveShopItemEdit('${item.id}',${isCustom})"
         onkeydown="if(event.key==='Enter'){saveShopItemEdit('${item.id}',${isCustom});event.preventDefault()}">`
     : `<div class="shop-name ${item.checked?'done':''}">${item.name}</div>`;
@@ -2148,8 +2148,8 @@ function unifiedShopRow(item, idx, total) {
     </div>
     <div style="display:flex;gap:2px;flex-shrink:0;align-items:center">
       ${showOrder && !isEditing ? `<div style="display:flex;flex-direction:column;gap:0">
-        <button onclick="moveShopItem('${item.id}',-1)" ${idx===0?'disabled':''} style="background:none;border:none;color:${idx===0?'var(--divider)':'var(--muted)'};font-size:11px;cursor:${idx===0?'default':'pointer'};padding:1px 4px;line-height:1">▲</button>
-        <button onclick="moveShopItem('${item.id}',1)" ${idx===total-1?'disabled':''} style="background:none;border:none;color:${idx===total-1?'var(--divider)':'var(--muted)'};font-size:11px;cursor:${idx===total-1?'default':'pointer'};padding:1px 4px;line-height:1">▼</button>
+        <button onclick="event.stopPropagation();moveShopItem('${item.id}',-1)" ${idx===0?'disabled':''} style="background:none;border:none;color:${idx===0?'var(--divider)':'var(--gold)'};font-size:16px;cursor:${idx===0?'default':'pointer'};padding:2px 6px;line-height:1;opacity:${idx===0?'0.3':'1'}">▲</button>
+        <button onclick="event.stopPropagation();moveShopItem('${item.id}',1)" ${idx===total-1?'disabled':''} style="background:none;border:none;color:${idx===total-1?'var(--divider)':'var(--gold)'};font-size:16px;cursor:${idx===total-1?'default':'pointer'};padding:2px 6px;line-height:1;opacity:${idx===total-1?'0.3':'1'}">▼</button>
       </div>` : ''}
       ${!isEditing ? `<button onclick="startEditShopItem('${item.id}',${isCustom})"
         style="background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;padding:2px 5px" title="Umbenennen">✏️</button>` : ''}
@@ -2168,7 +2168,10 @@ function deleteShopItem(id, isCustom) {
 function startEditShopItem(id, isCustom) {
   window._shopEditId = id;
   renderShopping();
-  setTimeout(() => document.getElementById('shop-edit-' + id)?.focus(), 30);
+  setTimeout(() => {
+    const el = document.getElementById('shop-edit-' + id);
+    if (el) el.focus({ preventScroll: true });
+  }, 30);
 }
 
 function saveShopItemEdit(id, isCustom) {
