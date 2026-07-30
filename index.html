@@ -786,6 +786,17 @@ function renderPlan() {
         💡 <strong style="color:var(--text)">${unpl.map(m=>MLBL[m]).join(' & ')}</strong> (~${unplCal} kcal) nicht geplant → KI plant <strong style="color:var(--gold)">${tgt} kcal</strong> auf ${sm.map(m=>MLBL[m]).join(' & ')} verteilt.
       </div>`;
     })()}
+    ${(function(){
+      try {
+        const prevPlan = state.planHistory?.[0]?.plan;
+        if (!prevPlan) return '';
+        const cnt = (prevPlan.days||[]).flatMap(function(d){ return (d.meals||[]).filter(function(m){ return !m.cooked; }); }).length;
+        if (!cnt) return '';
+        return '<div style="background:rgba(201,171,110,.15);border:1px solid var(--gold);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px;line-height:1.5">' +
+          '🔄 <strong style="color:var(--gold)">' + cnt + ' Mahlzeit' + (cnt===1?'':'en') + '</strong> aus dem letzten Plan wurden nicht gegessen und werden <strong>automatisch übertragen</strong>.' +
+          '</div>';
+      } catch(e){ return ''; }
+    })()}
     <button class="btn-gold" id="gen-btn" onclick="generatePlan()" ${!tokenOk || isGenerating ? 'disabled' : ''}>
       ${isGenerating
         ? '<div class="spinner"></div><span>Wird erstellt…</span>'
@@ -1971,10 +1982,20 @@ function renderShopping() {
     return;
   }
   const customItems = state.customItems || [];
-  const allOpen = sortByCategory([
+  const rawOpen = sortByCategory([
     ...(state.shopping || []).filter(i => !i.checked).map(i => ({...i, _src:'plan'})),
     ...customItems.filter(i => !i.checked).map(i => ({...i, _src:'custom'}))
   ]);
+  // Initialize or sync manual order
+  const openIds = rawOpen.map(i => i.id);
+  if (!window._shopManualOrder) {
+    window._shopManualOrder = [...openIds];
+  } else {
+    // Add new items at end, remove gone items
+    openIds.forEach(id => { if (!window._shopManualOrder.includes(id)) window._shopManualOrder.push(id); });
+    window._shopManualOrder = window._shopManualOrder.filter(id => openIds.includes(id));
+  }
+  const allOpen = window._shopManualOrder.map(id => rawOpen.find(i => i.id === id)).filter(Boolean);
   const allChecked = sortByCategory([
     ...(state.shopping || []).filter(i => i.checked).map(i => ({...i, _src:'plan'})),
     ...customItems.filter(i => i.checked).map(i => ({...i, _src:'custom'}))
@@ -1983,17 +2004,20 @@ function renderShopping() {
   const done  = allChecked.length;
   const pct   = total ? (done/total*100).toFixed(1) : 0;
 
-  let html = `
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+  let html = '';
+  if (window._lastToggle) {
+    html += `<div style="position:sticky;top:-16px;z-index:50;background:var(--surface);margin:-16px -16px 0 -16px;padding:10px 16px;border-bottom:2px solid var(--gold)">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <span style="font-size:14px">Artikel als erledigt markiert</span>
+        <button onclick="undoLastToggle()" style="background:var(--gold);border:none;border-radius:8px;color:#111;font-size:13px;font-weight:700;padding:6px 16px;cursor:pointer;white-space:nowrap">↩ Rückgängig</button>
+      </div>
+    </div>`;
+  }
+  html += `
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;margin-top:${window._lastToggle?'14px':'0'}">
     <div style="font-size:22px;font-weight:700">Einkaufszettel</div>
     ${state.shopping?.length ? `<button class="btn-ghost" onclick="openShoppingFilter()">↺ Neu</button>` : ''}
   </div>`;
-  if (window._lastToggle) {
-    html += `<div style="display:flex;align-items:center;justify-content:space-between;background:var(--elevated);border:1px solid var(--gold);border-radius:12px;padding:10px 14px;margin-bottom:12px;gap:12px">
-      <span style="font-size:14px">Artikel als erledigt markiert</span>
-      <button onclick="undoLastToggle()" style="background:var(--gold);border:none;border-radius:8px;color:#111;font-size:13px;font-weight:700;padding:6px 14px;cursor:pointer">↩ Rückgängig</button>
-    </div>`;
-  }
   html += renderCustomItemsSection();
   if (state.plan && !state.shopping?.length) {
     html += `<div style="text-align:center;padding:24px 0">
@@ -2015,7 +2039,7 @@ function renderShopping() {
   if (allOpen.length) {
     html += `<div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">NOCH BESORGEN</div>
     <div class="card" style="padding:0;margin-bottom:14px">`;
-    allOpen.forEach(item => { html += unifiedShopRow(item); });
+    allOpen.forEach((item, idx) => { html += unifiedShopRow(item, idx, allOpen.length); });
     html += `</div>`;
   }
 
@@ -2080,6 +2104,18 @@ function undoLastToggle() {
   renderShopping();
 }
 
+function moveShopItem(id, dir) {
+  const order = window._shopManualOrder;
+  if (!order) return;
+  const idx = order.indexOf(id);
+  if (idx < 0) return;
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= order.length) return;
+  order.splice(idx, 1);
+  order.splice(newIdx, 0, id);
+  renderShopping();
+}
+
 function deleteCustomItem(id) {
   state.customItems = (state.customItems || []).filter(i => i.id !== id);
   save();
@@ -2087,10 +2123,11 @@ function deleteCustomItem(id) {
 }
 
 // Einheitliche Einkaufslisten-Zeile (Plan- und Eigenartikel identisch)
-function unifiedShopRow(item) {
+function unifiedShopRow(item, idx, total) {
   const isCustom = item._src === 'custom';
   const toggleFn = isCustom ? `toggleCustomItem('${item.id}')` : `toggleShopItem('${item.id}')`;
   const isEditing = window._shopEditId === item.id;
+  const showOrder = (typeof idx === 'number') && !item.checked;
   const dayLabel = !isEditing && item.days?.length
     ? (item.days.length === 1 ? `Tag ${item.days[0]}` : `Tag ${item.days[0]}–${item.days[item.days.length-1]}`)
     : '';
@@ -2109,7 +2146,11 @@ function unifiedShopRow(item) {
         ${dayLabel ? `<div class="shop-days">📅 ${dayLabel}</div>` : ''}
       </div>
     </div>
-    <div style="display:flex;gap:2px;flex-shrink:0">
+    <div style="display:flex;gap:2px;flex-shrink:0;align-items:center">
+      ${showOrder && !isEditing ? `<div style="display:flex;flex-direction:column;gap:0">
+        <button onclick="moveShopItem('${item.id}',-1)" ${idx===0?'disabled':''} style="background:none;border:none;color:${idx===0?'var(--divider)':'var(--muted)'};font-size:11px;cursor:${idx===0?'default':'pointer'};padding:1px 4px;line-height:1">▲</button>
+        <button onclick="moveShopItem('${item.id}',1)" ${idx===total-1?'disabled':''} style="background:none;border:none;color:${idx===total-1?'var(--divider)':'var(--muted)'};font-size:11px;cursor:${idx===total-1?'default':'pointer'};padding:1px 4px;line-height:1">▼</button>
+      </div>` : ''}
       ${!isEditing ? `<button onclick="startEditShopItem('${item.id}',${isCustom})"
         style="background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;padding:2px 5px" title="Umbenennen">✏️</button>` : ''}
       <button onclick="deleteShopItem('${item.id}',${isCustom})"
@@ -2282,6 +2323,7 @@ function generateShopping(days) {
     personCount: info.factor
   })).sort((a,b) => a.name.localeCompare(b.name, 'de'));
 
+  window._shopManualOrder = null; // Reset manual order on new list
   save();
   closeModal('modal-shopping-filter');
   renderShopping();
@@ -3048,10 +3090,6 @@ ${unplannedNote}
 - Unbeliebte Lebensmittel (wenn möglich weglassen): ${disliked}
 ${restrictionLines ? `- Mahlzeit-Einschränkungen:\n${restrictionLines}` : ''}
 ${sharedPersonsInfo ? `GEMEINSAME MAHLZEITEN – andere Haushaltsmitglieder essen mit:\n${sharedPersonsInfo}\nBei diesen Mahlzeiten MÜSSEN deren Einschränkungen berücksichtigt werden.\n` : ''}
-ABWECHSLUNG PFLICHT – DIESE MAHLZEITEN WURDEN BEREITS GEGESSEN UND DÜRFEN NICHT WIEDERHOLT WERDEN:
-${historyList}
-→ Plane ausschliesslich neue, andere Gerichte. Kein Gericht aus obiger Liste verwenden, auch keine sehr ähnlichen Varianten.
-
 ${(function(){ try {
     const prevPlan = state.planHistory?.[0]?.plan;
     if (!prevPlan) return '';
@@ -3060,8 +3098,12 @@ ${(function(){ try {
         .map(function(m){ return '- ' + (MEAL_META[m.type]?.label||m.type) + ': ' + m.name + ' (' + m.calories + ' kcal)'; }); })
       .slice(0, 8);
     if (!uncooked.length) return '';
-    return 'NICHT GEGESSENE MAHLZEITEN AUS VORHERIGEM PLAN (bitte diese in den neuen Plan einplanen):\n' + uncooked.join('\n') + '\n\n';
-  } catch(e){ return ''; } })()}FESTE MAHLZEITEN (MÜSSEN EXAKT SO in den Plan übernommen werden – diese Mahlzeiten nicht durch andere ersetzen):
+    return '!!!! ÜBERTRAG – NICHT GEGESSENE MAHLZEITEN !!!!\nDiese Mahlzeiten aus dem letzten Plan wurden NICHT gegessen. Sie MÜSSEN in diesem Plan eingeplant werden. Das ist oberste Priorität, auch wenn sie in der Verlaufsliste vorkommen – für diese Mahlzeiten gilt die Abwechslungsregel NICHT:\n' + uncooked.join('\n') + '\n→ Jede dieser Mahlzeiten MUSS exakt so (oder in sehr ähnlicher Form) im neuen Plan erscheinen!\n\n';
+  } catch(e){ return ''; } })()}ABWECHSLUNG PFLICHT – DIESE MAHLZEITEN WURDEN BEREITS GEGESSEN UND DÜRFEN NICHT WIEDERHOLT WERDEN (Ausnahme: die oben genannten nicht gegessenen Mahlzeiten):
+${historyList}
+→ Plane ausschliesslich neue, andere Gerichte. Kein Gericht aus obiger Liste verwenden (außer den explizit genannten Überträgen oben).
+
+FESTE MAHLZEITEN (MÜSSEN EXAKT SO in den Plan übernommen werden – diese Mahlzeiten nicht durch andere ersetzen):
 ${fixedMealsList}
 
 ${pantryItems ? `VORRÄTE – ABSOLUTE PFLICHT:
