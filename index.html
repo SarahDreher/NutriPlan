@@ -2108,51 +2108,47 @@ function undoLastToggle() {
 function initShopDrag() {
   const list = document.getElementById('shop-open-list');
   if (!list) return;
-  let dragging = null, ghost = null;
 
-  function onMove(e) {
-    if (!dragging || !ghost) return;
-    e.preventDefault();
-    const touch = e.touches[0];
-    ghost.style.top = (touch.clientY - 28) + 'px';
-    ghost.style.display = 'none';
-    const el = document.elementFromPoint(touch.clientX, touch.clientY);
-    ghost.style.display = '';
-    const target = el && el.closest('.shop-drag-row');
-    if (target && target !== dragging) {
-      const rect = target.getBoundingClientRect();
-      if (touch.clientY < rect.top + rect.height / 2) {
-        list.insertBefore(dragging, target);
-      } else {
-        list.insertBefore(dragging, target.nextSibling);
-      }
-    }
-  }
+  list.querySelectorAll('.drag-handle').forEach(handle => {
+    let dragging = null, ghost = null;
 
-  function onEnd() {
-    document.removeEventListener('touchmove', onMove);
-    document.removeEventListener('touchend', onEnd);
-    if (ghost) { ghost.remove(); ghost = null; }
-    if (dragging) { dragging.style.opacity = '1'; dragging = null; }
-    window._shopManualOrder = [...list.querySelectorAll('.shop-drag-row')].map(r => r.dataset.id);
-    renderShopping();
-  }
-
-  list.querySelectorAll('.shop-drag-row').forEach(row => {
-    const handle = row.querySelector('.drag-handle');
-    if (!handle) return;
-    handle.addEventListener('touchstart', e => {
+    handle.addEventListener('pointerdown', e => {
+      const row = handle.closest('.shop-drag-row');
+      if (!row) return;
       e.preventDefault();
+      handle.setPointerCapture(e.pointerId);
       dragging = row;
       const rect = row.getBoundingClientRect();
       ghost = row.cloneNode(true);
       ghost.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;z-index:9999;opacity:0.92;background:var(--elevated);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.55);pointer-events:none;`;
       document.body.appendChild(ghost);
-      row.style.opacity = '0.35';
-      // Listener erst jetzt anhängen — nicht bei jedem Touch
-      document.addEventListener('touchmove', onMove, { passive: false });
-      document.addEventListener('touchend', onEnd);
-    }, { passive: false });
+      row.style.opacity = '0.3';
+    });
+
+    handle.addEventListener('pointermove', e => {
+      if (!dragging || !ghost) return;
+      ghost.style.top = (e.clientY - 28) + 'px';
+      ghost.style.visibility = 'hidden';
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      ghost.style.visibility = 'visible';
+      const target = el && el.closest('.shop-drag-row');
+      if (target && target !== dragging) {
+        const rect = target.getBoundingClientRect();
+        list.insertBefore(dragging, e.clientY < rect.top + rect.height / 2 ? target : target.nextSibling);
+      }
+    });
+
+    function endDrag() {
+      if (!dragging) return;
+      if (ghost) { ghost.remove(); ghost = null; }
+      dragging.style.opacity = '1';
+      dragging = null;
+      window._shopManualOrder = [...list.querySelectorAll('.shop-drag-row')].map(r => r.dataset.id);
+      renderShopping();
+    }
+
+    handle.addEventListener('pointerup', endDrag);
+    handle.addEventListener('pointercancel', endDrag);
   });
 }
 
@@ -2190,10 +2186,10 @@ function unifiedShopRow(item, isOpenList) {
       </div>
     </div>
     <div style="display:flex;gap:2px;flex-shrink:0;align-items:center">
-      ${!isEditing ? `<button onclick="startEditShopItem('${item.id}',${isCustom})"
+      ${isOpenList && !isEditing ? `<button onclick="startEditShopItem('${item.id}',${isCustom})"
         style="background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;padding:2px 5px" title="Umbenennen">✏️</button>` : ''}
-      <button onclick="deleteShopItem('${item.id}',${isCustom})"
-        style="background:none;border:none;color:var(--muted);font-size:19px;cursor:pointer;padding:2px 4px" title="Löschen">×</button>
+      ${isOpenList ? `<button onclick="deleteShopItem('${item.id}',${isCustom})"
+        style="background:none;border:none;color:var(--muted);font-size:19px;cursor:pointer;padding:2px 4px" title="Löschen">×</button>` : ''}
     </div>
   </div>`;
 }
