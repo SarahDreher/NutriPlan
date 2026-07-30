@@ -1970,15 +1970,6 @@ function renderShopping() {
     c.innerHTML = `${renderCustomItemsSection()}<div class="empty-state"><div class="empty-icon">🛒</div><div class="empty-title">Noch kein Plan</div><div class="empty-text">Erstelle zuerst einen Essensplan, dann wird hier der Einkaufszettel automatisch generiert.</div></div>`;
     return;
   }
-  if (!state.shopping?.length && state.plan) {
-    c.innerHTML = `${renderCustomItemsSection()}<div class="empty-state">
-      <div class="empty-icon">🛒</div>
-      <div class="empty-title">Einkaufszettel erstellen</div>
-      <div class="empty-text">Alle Zutaten aus deinem Plan werden automatisch zusammengestellt.</div>
-      <button class="btn-gold" style="margin-top:8px;width:auto;padding:12px 28px" onclick="openShoppingFilter()">✨ Jetzt erstellen</button>
-    </div>`;
-    return;
-  }
   const customItems = state.customItems || [];
   const allOpen = sortByCategory([
     ...(state.shopping || []).filter(i => !i.checked).map(i => ({...i, _src:'plan'})),
@@ -1995,9 +1986,25 @@ function renderShopping() {
   let html = `
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
     <div style="font-size:22px;font-weight:700">Einkaufszettel</div>
-    <button class="btn-ghost" onclick="openShoppingFilter()">↺ Neu</button>
+    ${state.shopping?.length ? `<button class="btn-ghost" onclick="openShoppingFilter()">↺ Neu</button>` : ''}
   </div>`;
+  if (window._lastToggle) {
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;background:var(--elevated);border:1px solid var(--gold);border-radius:12px;padding:10px 14px;margin-bottom:12px;gap:12px">
+      <span style="font-size:14px">Artikel als erledigt markiert</span>
+      <button onclick="undoLastToggle()" style="background:var(--gold);border:none;border-radius:8px;color:#111;font-size:13px;font-weight:700;padding:6px 14px;cursor:pointer">↩ Rückgängig</button>
+    </div>`;
+  }
   html += renderCustomItemsSection();
+  if (state.plan && !state.shopping?.length) {
+    html += `<div style="text-align:center;padding:24px 0">
+      <div style="font-size:36px;margin-bottom:8px">🛒</div>
+      <div style="font-size:16px;font-weight:600;margin-bottom:6px">Einkaufszettel aus Plan erstellen</div>
+      <div style="font-size:14px;color:var(--muted);margin-bottom:16px">Alle Zutaten werden automatisch zusammengestellt.</div>
+      <button class="btn-gold" style="width:auto;padding:12px 28px" onclick="openShoppingFilter()">✨ Jetzt erstellen</button>
+    </div>`;
+    c.innerHTML = html;
+    return;
+  }
   html += `<div class="card" style="margin-bottom:14px">
     <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:8px">
       <span>${done} von ${total} besorgt</span><span style="color:var(--gold);font-weight:600">${Math.round(pct)}%</span>
@@ -2054,8 +2061,23 @@ function addCustomItem() {
 }
 
 function toggleCustomItem(id) {
+  if (window._shopEditId) return;
   const item = (state.customItems || []).find(i => i.id === id);
-  if (item) { item.checked = !item.checked; save(); renderShopping(); }
+  if (item) {
+    window._lastToggle = { id, isCustom: true, wasChecked: item.checked };
+    item.checked = !item.checked;
+    save(); renderShopping();
+  }
+}
+
+function undoLastToggle() {
+  const t = window._lastToggle;
+  if (!t) return;
+  const list = t.isCustom ? (state.customItems || []) : (state.shopping || []);
+  const item = list.find(i => i.id === t.id);
+  if (item) { item.checked = t.wasChecked; save(); }
+  window._lastToggle = null;
+  renderShopping();
 }
 
 function deleteCustomItem(id) {
@@ -2080,7 +2102,7 @@ function unifiedShopRow(item) {
         onkeydown="if(event.key==='Enter'){saveShopItemEdit('${item.id}',${isCustom});event.preventDefault()}">`
     : `<div class="shop-name ${item.checked?'done':''}">${item.name}</div>`;
   return `<div class="shop-row" style="cursor:default">
-    <div onclick="${toggleFn}" style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;cursor:pointer">
+    <div ${isEditing ? '' : `onclick="${toggleFn}"`} style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;cursor:${isEditing?'default':'pointer'}">
       <div class="check-circle ${item.checked?'done':''}">${item.checked?'✓':''}</div>
       <div style="flex:1;min-width:0">
         ${nameHtml}
@@ -2181,8 +2203,13 @@ function customShopRow(item) {
 }
 
 function toggleShopItem(id) {
+  if (window._shopEditId) return;
   const item = state.shopping.find(i => i.id === id);
-  if (item) { item.checked = !item.checked; save(); renderShopping(); }
+  if (item) {
+    window._lastToggle = { id, isCustom: false, wasChecked: item.checked };
+    item.checked = !item.checked;
+    save(); renderShopping();
+  }
 }
 
 function clearChecked() {
@@ -2924,7 +2951,7 @@ async function generatePlan() {
     ...(state.mealHistory || []).flatMap(entry => entry.meals || []),
     ...(state.planHistory || []).flatMap(e => (e.plan?.days||[]).flatMap(d => (d.meals||[]).map(m => m.name)))
   ]);
-  const historyList = [...historyMeals].slice(-80).join(', ') || 'keine';
+  const historyList = [...historyMeals].slice(-40).join(', ') || 'keine';
 
   // Wochentage der Plantage berechnen
   const _weekdayKeys = ['sun','mon','tue','wed','thu','fri','sat'];
@@ -3025,19 +3052,16 @@ ABWECHSLUNG PFLICHT – DIESE MAHLZEITEN WURDEN BEREITS GEGESSEN UND DÜRFEN NIC
 ${historyList}
 → Plane ausschliesslich neue, andere Gerichte. Kein Gericht aus obiger Liste verwenden, auch keine sehr ähnlichen Varianten.
 
-${(() => {
+${(function(){ try {
     const prevPlan = state.planHistory?.[0]?.plan;
     if (!prevPlan) return '';
-    const uncooked = prevPlan.days
-      .flatMap(day => day.meals.filter(m => !m.cooked)
-        .map(m => `- ${MEAL_META[m.type]?.label||m.type}: ${m.name} (${m.calories} kcal)`))
-      .slice(0, 12);
+    const uncooked = (prevPlan.days||[])
+      .flatMap(function(day){ return (day.meals||[]).filter(function(m){ return !m.cooked; })
+        .map(function(m){ return '- ' + (MEAL_META[m.type]?.label||m.type) + ': ' + m.name + ' (' + m.calories + ' kcal)'; }); })
+      .slice(0, 8);
     if (!uncooked.length) return '';
-    return `NICHT GEGESSENE MAHLZEITEN AUS VORHERIGEM PLAN (bitte diese oder sehr ähnliche Mahlzeiten in den neuen Plan einplanen – sie wurden vorbereitet aber nicht gegessen):
-${uncooked.join('\n')}
-
-`;
-  })()}FESTE MAHLZEITEN (MÜSSEN EXAKT SO in den Plan übernommen werden – diese Mahlzeiten nicht durch andere ersetzen):
+    return 'NICHT GEGESSENE MAHLZEITEN AUS VORHERIGEM PLAN (bitte diese in den neuen Plan einplanen):\n' + uncooked.join('\n') + '\n\n';
+  } catch(e){ return ''; } })()}FESTE MAHLZEITEN (MÜSSEN EXAKT SO in den Plan übernommen werden – diese Mahlzeiten nicht durch andere ersetzen):
 ${fixedMealsList}
 
 ${pantryItems ? `VORRÄTE – ABSOLUTE PFLICHT:
@@ -3091,8 +3115,8 @@ ${pantryItems ? `- Vorratszutaten aus obiger Liste MÜSSEN in den ersten Tagen v
           { role: 'system', content: 'Du bist ein Ernaehrungsberater. Antworte ausschliesslich mit validem JSON, ohne Erklaerungen oder Markdown.' },
           { role: 'user', content: prompt }
         ],
-        max_tokens: 3500,
-        temperature: 0.9,
+        max_tokens: 4500,
+        temperature: 0.7,
         stream: false
       }, controller.signal);
     } finally {
@@ -3106,10 +3130,33 @@ ${pantryItems ? `- Vorratszutaten aus obiger Liste MÜSSEN in den ersten Tagen v
 
     const data = await resp.json();
     const content2 = data.choices?.[0]?.message?.content || '';
-    const match2 = content2.match(/\{[\s\S]*\}/);
-    if (!match2) throw new Error('Kein JSON in der Antwort gefunden.');
-    const plan = JSON.parse(match2[0]);
-    if (!plan.days || !Array.isArray(plan.days)) throw new Error('Ungültiges Plan-Format.');
+    let plan = null;
+    let parseErr = null;
+    for (const attempt of [content2, content2.replace(/```json?|```/g,'')]) {
+      try {
+        const m = attempt.match(/\{[\s\S]*\}/);
+        if (m) { const p = JSON.parse(m[0]); if (p.days && Array.isArray(p.days)) { plan = p; break; } }
+      } catch(e) { parseErr = e; }
+    }
+    if (!plan) {
+      // Einen automatischen Retry mit leicht anderer Temperature
+      console.warn('JSON-Parse fehlgeschlagen, Retry…', parseErr);
+      const resp2 = await hfFetch({
+        _token: token, model: state.settings.hfModel,
+        messages: [
+          { role: 'system', content: 'Du bist ein Ernaehrungsberater. Antworte NUR mit validem JSON-Objekt ohne Erklaerungen, Markdown oder Code-Blocks.' },
+          { role: 'user', content: prompt }
+        ],
+        max_tokens: 4500, temperature: 0.5, stream: false
+      });
+      if (resp2.ok) {
+        const data2 = await resp2.json();
+        const c2 = (data2.choices?.[0]?.message?.content || '').replace(/```json?|```/g,'');
+        const m2 = c2.match(/\{[\s\S]*\}/);
+        if (m2) { try { const p2 = JSON.parse(m2[0]); if (p2.days && Array.isArray(p2.days)) plan = p2; } catch(e){} }
+      }
+    }
+    if (!plan) throw new Error('Kein gültiges Plan-JSON erhalten. Bitte erneut versuchen.');
     plan.generatedAt = new Date().toISOString();
     plan.startDate = state.planStartDate || new Date().toISOString().slice(0,10);
     normalizePlan(plan);
