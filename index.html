@@ -709,6 +709,9 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('view-' + tab).classList.add('active');
   document.getElementById('tab-' + tab).classList.add('active');
+  document.getElementById('content').scrollTop = 0;
+  const ub = document.getElementById('shop-undo-bar');
+  if (ub && tab !== 'shopping') ub.style.display = 'none';
   currentTab = tab;
   renderTab(tab);
 }
@@ -2004,27 +2007,36 @@ function renderShopping() {
   const done  = allChecked.length;
   const pct   = total ? (done/total*100).toFixed(1) : 0;
 
-  let html = '';
-  if (window._lastToggle) {
-    html += `<div style="position:sticky;top:-16px;z-index:50;background:var(--surface);margin:-16px -16px 0 -16px;padding:10px 16px;border-bottom:2px solid var(--gold)">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-        <span style="font-size:14px">Artikel als erledigt markiert</span>
-        <button onclick="undoLastToggle()" style="background:var(--gold);border:none;border-radius:8px;color:#111;font-size:13px;font-weight:700;padding:6px 16px;cursor:pointer;white-space:nowrap">↩ Rückgängig</button>
-      </div>
-    </div>`;
+  // Undo bar als fixed overlay (immer sichtbar, unabhängig vom Scroll)
+  let undoBar = document.getElementById('shop-undo-bar');
+  if (!undoBar) {
+    undoBar = document.createElement('div');
+    undoBar.id = 'shop-undo-bar';
+    undoBar.style.cssText = 'position:fixed;left:0;right:0;bottom:calc(var(--tab-h,60px) + 8px);z-index:200;display:none;padding:0 12px';
+    document.getElementById('app').appendChild(undoBar);
   }
-  html += `
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;margin-top:${window._lastToggle?'14px':'0'}">
+  if (window._lastToggle) {
+    undoBar.style.display = 'block';
+    undoBar.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--elevated);border:1.5px solid var(--gold);border-radius:14px;padding:10px 14px;box-shadow:0 4px 20px rgba(0,0,0,.5)">
+      <span style="font-size:14px">Artikel als erledigt markiert</span>
+      <button onclick="undoLastToggle()" style="background:var(--gold);border:none;border-radius:8px;color:#111;font-size:13px;font-weight:700;padding:6px 16px;cursor:pointer;white-space:nowrap">↩ Rückgängig</button>
+    </div>`;
+  } else {
+    undoBar.style.display = 'none';
+  }
+
+  let html = `
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
     <div style="font-size:22px;font-weight:700">Einkaufszettel</div>
     ${state.shopping?.length ? `<button class="btn-ghost" onclick="openShoppingFilter()">↺ Neu</button>` : ''}
   </div>`;
   html += renderCustomItemsSection();
   if (state.plan && !state.shopping?.length) {
-    html += `<div style="text-align:center;padding:24px 0">
-      <div style="font-size:36px;margin-bottom:8px">🛒</div>
-      <div style="font-size:16px;font-weight:600;margin-bottom:6px">Einkaufszettel aus Plan erstellen</div>
-      <div style="font-size:14px;color:var(--muted);margin-bottom:16px">Alle Zutaten werden automatisch zusammengestellt.</div>
-      <button class="btn-gold" style="width:auto;padding:12px 28px" onclick="openShoppingFilter()">✨ Jetzt erstellen</button>
+    html += `<div style="display:flex;flex-direction:column;align-items:center;padding:24px 0;gap:8px">
+      <div style="font-size:36px">🛒</div>
+      <div style="font-size:16px;font-weight:600">Einkaufszettel aus Plan erstellen</div>
+      <div style="font-size:14px;color:var(--muted);text-align:center">Alle Zutaten werden automatisch zusammengestellt.</div>
+      <button class="btn-gold" style="width:auto;padding:12px 28px;margin-top:8px" onclick="openShoppingFilter()">✨ Jetzt erstellen</button>
     </div>`;
     c.innerHTML = html;
     return;
@@ -2110,45 +2122,51 @@ function initShopDrag() {
   if (!list) return;
 
   list.querySelectorAll('.drag-handle').forEach(handle => {
-    let dragging = null, ghost = null;
-
-    handle.addEventListener('pointerdown', e => {
+    handle.addEventListener('touchstart', function(e) {
+      e.preventDefault();
       const row = handle.closest('.shop-drag-row');
       if (!row) return;
-      e.preventDefault();
-      handle.setPointerCapture(e.pointerId);
-      dragging = row;
+      let ghost = null;
+      let moved = false;
+
       const rect = row.getBoundingClientRect();
       ghost = row.cloneNode(true);
-      ghost.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;z-index:9999;opacity:0.92;background:var(--elevated);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.55);pointer-events:none;`;
+      ghost.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;z-index:9999;opacity:0.9;background:var(--elevated);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.5);pointer-events:none;transition:top .05s`;
       document.body.appendChild(ghost);
       row.style.opacity = '0.3';
-    });
 
-    handle.addEventListener('pointermove', e => {
-      if (!dragging || !ghost) return;
-      ghost.style.top = (e.clientY - 28) + 'px';
-      ghost.style.visibility = 'hidden';
-      const el = document.elementFromPoint(e.clientX, e.clientY);
-      ghost.style.visibility = 'visible';
-      const target = el && el.closest('.shop-drag-row');
-      if (target && target !== dragging) {
-        const rect = target.getBoundingClientRect();
-        list.insertBefore(dragging, e.clientY < rect.top + rect.height / 2 ? target : target.nextSibling);
+      function onMove(ev) {
+        ev.preventDefault();
+        moved = true;
+        const t = ev.touches[0];
+        ghost.style.transition = 'none';
+        ghost.style.top = (t.clientY - 28) + 'px';
+        ghost.style.visibility = 'hidden';
+        const el = document.elementFromPoint(t.clientX, t.clientY);
+        ghost.style.visibility = 'visible';
+        const target = el && el.closest('.shop-drag-row');
+        if (target && target !== row) {
+          const tr = target.getBoundingClientRect();
+          list.insertBefore(row, t.clientY < tr.top + tr.height / 2 ? target : target.nextSibling);
+        }
       }
-    });
 
-    function endDrag() {
-      if (!dragging) return;
-      if (ghost) { ghost.remove(); ghost = null; }
-      dragging.style.opacity = '1';
-      dragging = null;
-      window._shopManualOrder = [...list.querySelectorAll('.shop-drag-row')].map(r => r.dataset.id);
-      renderShopping();
-    }
+      function onEnd() {
+        handle.removeEventListener('touchmove', onMove);
+        handle.removeEventListener('touchend', onEnd);
+        handle.removeEventListener('touchcancel', onEnd);
+        ghost.remove();
+        row.style.opacity = '1';
+        if (moved) {
+          window._shopManualOrder = [...list.querySelectorAll('.shop-drag-row')].map(r => r.dataset.id);
+          renderShopping();
+        }
+      }
 
-    handle.addEventListener('pointerup', endDrag);
-    handle.addEventListener('pointercancel', endDrag);
+      handle.addEventListener('touchmove', onMove, { passive: false });
+      handle.addEventListener('touchend', onEnd, { once: true });
+      handle.addEventListener('touchcancel', onEnd, { once: true });
+    }, { passive: false });
   });
 }
 
