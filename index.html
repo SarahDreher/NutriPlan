@@ -2031,25 +2031,27 @@ function renderShopping() {
     ${state.shopping?.length ? `<button class="btn-ghost" onclick="openShoppingFilter()">↺ Neu</button>` : ''}
   </div>`;
   html += renderCustomItemsSection();
-  if (state.plan && !state.shopping?.length) {
-    html += `<div style="display:flex;flex-direction:column;align-items:center;padding:24px 0;gap:8px">
+
+  const planListMissing = state.plan && !state.shopping?.length;
+  if (planListMissing) {
+    // Hinweis + Button, aber Liste der eigenen Artikel wird darunter weiter angezeigt
+    html += `<div style="display:flex;flex-direction:column;align-items:center;padding:20px 0 16px;gap:8px">
       <div style="font-size:36px">🛒</div>
       <div style="font-size:16px;font-weight:600">Einkaufszettel aus Plan erstellen</div>
       <div style="font-size:14px;color:var(--muted);text-align:center">Alle Zutaten werden automatisch zusammengestellt.</div>
       <button class="btn-gold" style="width:auto;padding:12px 28px;margin-top:8px" onclick="openShoppingFilter()">✨ Jetzt erstellen</button>
     </div>`;
-    c.innerHTML = html;
-    return;
+  } else {
+    html += `<div class="card" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:8px">
+        <span>${done} von ${total} besorgt</span><span style="color:var(--gold);font-weight:600">${Math.round(pct)}%</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill green" style="width:${pct}%"></div></div>
+    </div>`;
   }
-  html += `<div class="card" style="margin-bottom:14px">
-    <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:8px">
-      <span>${done} von ${total} besorgt</span><span style="color:var(--gold);font-weight:600">${Math.round(pct)}%</span>
-    </div>
-    <div class="progress-track"><div class="progress-fill green" style="width:${pct}%"></div></div>
-  </div>`;
 
   if (allOpen.length) {
-    html += `<div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">NOCH BESORGEN</div>
+    html += `<div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">${planListMissing ? 'EIGENE ARTIKEL' : 'NOCH BESORGEN'}</div>
     <div class="card" id="shop-open-list" style="padding:0;margin-bottom:14px">`;
     allOpen.forEach(item => { html += unifiedShopRow(item, true); });
     html += `</div>`;
