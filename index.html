@@ -262,9 +262,25 @@ input[type=range]::-webkit-slider-thumb {
 </head>
 <body>
 <script>
+const APP_VERSION = 'v47';
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    // Relativer Pfad – '/sw.js' schlug auf GitHub Pages (/NutriPlan/) fehl!
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+      .then(reg => {
+        reg.update();
+        // Bei neuer Version automatisch neu laden
+        reg.addEventListener('updatefound', () => {
+          const nw = reg.installing;
+          if (!nw) return;
+          nw.addEventListener('statechange', () => {
+            if (nw.state === 'activated' && navigator.serviceWorker.controller) {
+              location.reload();
+            }
+          });
+        });
+      })
+      .catch(err => console.warn('SW-Registrierung fehlgeschlagen:', err));
   });
 }
 </script>
@@ -2705,8 +2721,34 @@ function renderSettings() {
       </div>
     </div>
   </div>
+
+  <!-- Version / Update -->
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div>
+        <div style="font-size:14px;font-weight:600">Version ${typeof APP_VERSION !== 'undefined' ? APP_VERSION : '?'}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">Zeigt an, welcher Stand geladen ist</div>
+      </div>
+      <button class="btn-ghost" onclick="forceAppUpdate()" style="white-space:nowrap">↻ Update</button>
+    </div>
+  </div>
   `;
   document.getElementById('settings-content').innerHTML = html;
+}
+
+// Erzwingt das Laden der neuesten Version (löscht Caches + Service Worker)
+async function forceAppUpdate() {
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+  } catch (e) { /* egal – Hauptsache neu laden */ }
+  location.reload();
 }
 
 function updateCal(val) {
